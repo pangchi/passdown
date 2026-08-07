@@ -235,6 +235,49 @@ fieldset:disabled { opacity: 0.6; }
 }
 .filter-row label { flex: 1; min-width: 120px; }
 
+.archive-export {
+    margin-top: 1rem;
+    padding-top: 0.85rem;
+    border-top: 1px dashed var(--border);
+}
+.archive-export summary {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--muted);
+    cursor: pointer;
+    user-select: none;
+    list-style: none; /* remove the default triangle marker so our own ::marker/::before controls it consistently across browsers */
+}
+.archive-export summary::-webkit-details-marker { display: none; }
+.archive-export summary::before {
+    content: "\25b8"; /* ▸ */
+    display: inline-block;
+    margin-right: 0.4rem;
+    transition: transform 0.15s;
+}
+.archive-export[open] summary::before { transform: rotate(90deg); }
+.archive-export summary:hover { color: var(--accent); }
+.archive-export-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.75rem;
+    margin-top: 0.6rem;
+}
+.archive-export-form label {
+    display: flex;
+    flex-direction: column;
+    font-size: 0.8rem;
+    color: var(--muted);
+    gap: 0.2rem;
+}
+.archive-export-hint {
+    margin: 0.5rem 0 0;
+    font-size: 0.78rem;
+    color: var(--muted);
+}
+
 .log-search {
     display: flex;
     gap: 0.4rem;

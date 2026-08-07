@@ -125,6 +125,7 @@
             <a href="{{ url_for('export_csv') }}" class="export-link" data-export-format="csv" title="Download the currently filtered log as CSV">⬇ CSV</a>
             <a href="{{ url_for('export_docx') }}" class="export-link" data-export-format="docx" title="Download the currently filtered log as a Word document">⬇ DOCX</a>
             <a href="{{ url_for('export_html') }}" class="export-link" data-export-format="html" title="Download the currently filtered log as a standalone HTML file">⬇ HTML</a>
+            <a href="{{ url_for('export_pdf') }}" class="export-link" data-export-format="pdf" title="Download the currently filtered log as a PDF">⬇ PDF</a>
         </span>
     </h2>
     <form method="get" action="{{ url_for('index') }}" class="filter-form" id="log-filter-form">
@@ -203,6 +204,27 @@
             </label>
         </div>
     </form>
+
+    <details class="archive-export" {% if date_from or date_to %}open{% endif %}>
+        <summary>Archive export</summary>
+        <form method="get" action="{{ url_for('export_csv') }}" class="archive-export-form">
+            <label>
+                From
+                <input type="date" name="date_from" value="{{ date_from }}">
+            </label>
+            <label>
+                To
+                <input type="date" name="date_to" value="{{ date_to }}">
+            </label>
+            <button type="submit" formaction="{{ url_for('export_pdf') }}">⬇ PDF</button>
+            <button type="submit" formaction="{{ url_for('export_csv') }}">⬇ CSV</button>
+        </form>
+        <p class="archive-export-hint">
+            Exports every entry in that date range, regardless of the filters above —
+            a complete record for filing away, not a filtered view. Leave a date blank
+            for an open-ended range.
+        </p>
+    </details>
 </section>
 
 {% if entries %}

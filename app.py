@@ -265,6 +265,22 @@ def _parse_datetime_local(value):
     return datetime.strptime(value, "%Y-%m-%dT%H:%M")
 
 
+def _parse_date(value):
+    """Parse an HTML date field ('YYYY-MM-DD') to a date, or None if blank/invalid.
+    Unlike _parse_datetime_local, invalid input returns None rather than
+    raising — used for the archive export's From/To fields, where a
+    malformed value should just be silently ignored (no bound) rather
+    than 400ing the whole export.
+    """
+    value = (value or "").strip()
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
 def _datetime_local_str(value):
     """Format a value for a datetime-local input's value attribute.
 
@@ -343,6 +359,8 @@ def _degraded_index_context(new_entry_overrides, db_warning, db_entry_disabled):
         "location_filter": "",
         "locations": [],
         "search_query": "",
+        "date_from": "",
+        "date_to": "",
         "days_back": config.DEFAULT_DAYS_BACK,
         "new_entry": new_entry,
         "is_fresh_new_entry": new_entry_overrides is None,
@@ -386,9 +404,28 @@ def _build_index_context(new_entry_overrides=None):
         except ValueError:
             days_back = config.DEFAULT_DAYS_BACK
 
+    # An explicit archive date range (see the "Archive export" section —
+    # /export.pdf and /export.csv both accept this) takes precedence over
+    # the Days back preset above when set; they're two different ways to
+    # express the same underlying date filter, not combined. Only used by
+    # the archive export form today, but reading it here means it works
+    # for the on-page log too if a link is ever built for that.
+    date_from = _parse_date(request.args.get("date_from", ""))
+    date_to = _parse_date(request.args.get("date_to", ""))
+
     query = "SELECT * FROM passdown_entries WHERE is_deleted = FALSE"
     params = []
-    if days_back is not None:
+    if date_from or date_to:
+        if date_from:
+            query += " AND COALESCE(task_start, created_at) >= %s"
+            params.append(date_from)
+        if date_to:
+            # Exclusive upper bound one day past date_to, so the whole of
+            # date_to itself (any time up to 23:59:59) is included rather
+            # than being cut off at midnight.
+            query += " AND COALESCE(task_start, created_at) < %s + INTERVAL '1 day'"
+            params.append(date_to)
+    elif days_back is not None:
         query += " AND created_at >= NOW() - (%s * INTERVAL '1 day')"
         params.append(days_back)
 
@@ -513,6 +550,8 @@ def _build_index_context(new_entry_overrides=None):
         "tag_filters": tag_filters,
         "location_filter": location_filter,
         "search_query": search_query,
+        "date_from": date_from.isoformat() if date_from else "",
+        "date_to": date_to.isoformat() if date_to else "",
         "locations": sorted(set(tool_locations.values())),
         "days_back": days_back,
         "new_entry": new_entry,
@@ -733,6 +772,98 @@ def export_html():
         html,
         mimetype="text/html",
         headers={"Content-Disposition": f'attachment; filename="{_export_filename("html")}"'},
+    )
+
+
+def _pdf_safe(text):
+    """fpdf2's built-in core fonts (Helvetica/Times/Courier) only support
+    latin-1 — no bundled TrueType font was added for full Unicode support,
+    to avoid shipping/managing an extra font file with the app. Rather
+    than let an export crash on, say, a curly quote or an emoji someone
+    typed into a note, replace anything outside latin-1 with '?' so the
+    export always succeeds; the rare unusual character just won't render
+    correctly. CSV/DOCX/HTML exports aren't affected by this — it's a
+    PDF-specific limitation.
+    """
+    if not text:
+        return ""
+    return text.encode("latin-1", errors="replace").decode("latin-1")
+
+
+@app.route("/export.pdf")
+def export_pdf():
+    """Download the currently-filtered log as a PDF — same filtering as
+    the other export formats, primarily meant for the archive export
+    (a specific date range, for filing away/records) but works with
+    whatever filters are active the same as the others.
+    """
+    from fpdf import FPDF
+
+    entries = _get_export_entries()
+
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.cell(0, 10, "Shift Passdown Log", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "I", 9)
+    count_text = f"Exported {datetime.now().strftime('%Y-%m-%d %H:%M')} - {len(entries)} " + (
+        "entry" if len(entries) == 1 else "entries"
+    )
+    pdf.cell(0, 6, _pdf_safe(count_text), new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(4)
+
+    if not entries:
+        pdf.set_font("Helvetica", "", 10)
+        pdf.cell(0, 6, "No entries match the current filters.", new_x="LMARGIN", new_y="NEXT")
+
+    def field(label, value):
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.cell(0, 6, _pdf_safe(label + ":"), new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 10)
+        pdf.multi_cell(0, 5, _pdf_safe(value), new_x="LMARGIN", new_y="NEXT")
+
+    for e in entries:
+        pdf.set_font("Helvetica", "B", 12)
+        heading = f"{_fmt_export_dt(e['created_at'])} - {e['author']} ({e['shift']})"
+        pdf.multi_cell(0, 7, _pdf_safe(heading), new_x="LMARGIN", new_y="NEXT")
+
+        meta_bits = [f"Tool/Entity: {e['tool_entity']}"] if e["tool_entity"] else []
+        if e.get("location"):
+            meta_bits.append(f"Location: {e['location']}")
+        if e["chamber"]:
+            meta_bits.append(f"Chamber: {e['chamber']}")
+        if e["category"] and e["category"] != "unspecified":
+            meta_bits.append(f"Category: {e['category']}")
+        if meta_bits:
+            pdf.set_font("Helvetica", "", 9)
+            pdf.multi_cell(0, 5, _pdf_safe(" | ".join(meta_bits)), new_x="LMARGIN", new_y="NEXT")
+
+        if e["task_start"] or e["task_end"]:
+            field("Task", f"{_fmt_export_dt(e['task_start'])} - {_fmt_export_dt(e['task_end'])}")
+
+        field("Problem Statement", e["problem_statement"])
+        if e["action_items"]:
+            field("Action Item(s)", e["action_items"])
+        if e["current_status"]:
+            field("Current Status", e["current_status"])
+        if e["follow_up"]:
+            field("Follow up", e["follow_up"])
+        if e.get("hashtags"):
+            field("Tags", ", ".join("#" + t for t in e["hashtags"]))
+        if e.get("mentions"):
+            field("Mentions", ", ".join("@" + m for m in e["mentions"]))
+        if e.get("attachments"):
+            names = ", ".join(a["original_filename"] for a in e["attachments"])
+            field("Attachments", names + " (not embedded — see the app for the actual files)")
+
+        pdf.ln(4)
+
+    return Response(
+        bytes(pdf.output()),
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{_export_filename("pdf")}"'},
     )
 
 
