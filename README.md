@@ -489,7 +489,6 @@ passdown/
 
 ## Possible extensions
 
-- Export a date range to PDF/CSV for archiving
-- Search box across note text
-- Per-entry tags (e.g. maintenance, safety, quality) if free text
-  becomes hard to scan
+Nothing outstanding right now — the ideas that used to be listed here
+(date-range PDF/CSV export, search across note text, per-entry tags)
+have all since shipped as features. Add new ones here as they come up.
