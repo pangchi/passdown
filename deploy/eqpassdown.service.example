@@ -1,0 +1,75 @@
+# Example systemd unit to run the passdown app under gunicorn, bound to
+# a Unix socket (rather than a TCP port) for Apache to proxy to. So it
+# starts on boot and restarts if it crashes.
+#
+# Service name is "eqpassdown" (not just "passdown") to match the
+# /eqpassdown/ URL subfolder it's mounted at — see
+# apache-eqpassdown.conf.example.
+#
+# Why a Unix socket: skips the TCP/loopback overhead, and — since the
+# socket is a file — its permissions are what control access, rather
+# than "whatever's listening on 127.0.0.1:5050 on this machine." Group
+# is set to www-data (Apache's default user/group on Ubuntu) so Apache
+# can connect to it; RuntimeDirectory has systemd create /run/eqpassdown/
+# on start with the matching group and 0770 permissions, so only the
+# app and Apache (via that group) can read/write the socket inside it.
+#
+# Install:
+#   # 0. Prerequisite this file assumes but doesn't do for you — create
+#   #    the "passdown" system user (User= below) if it doesn't exist
+#   #    yet, and make sure it owns the app directory. Skipping this is
+#   #    the most common reason this unit fails to start (systemd exit
+#   #    code 217/USER, "Failed to determine user credentials"):
+#   #      id passdown || sudo useradd --system --no-create-home --shell /usr/sbin/nologin passdown
+#   #      sudo chown -R passdown:passdown /opt/eqpassdown
+#   sudo cp deploy/eqpassdown.service.example /etc/systemd/system/eqpassdown.service
+#   # then edit the paths/user below to match your setup
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now eqpassdown
+#   sudo systemctl status eqpassdown       # check it started cleanly
+#   journalctl -u eqpassdown -f            # tail logs
+#   ls -l /run/eqpassdown/                 # confirm the socket exists with the right owner/group
+
+[Unit]
+Description=Shift Passdown app (gunicorn, Unix socket)
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=passdown
+Group=www-data
+RuntimeDirectory=eqpassdown
+RuntimeDirectoryMode=0770
+WorkingDirectory=/opt/eqpassdown
+EnvironmentFile=/opt/eqpassdown/.env
+ExecStart=/opt/eqpassdown/venv/bin/gunicorn \
+    --workers 3 \
+    --bind unix:/run/eqpassdown/eqpassdown.sock \
+    --umask 007 \
+    --access-logfile - \
+    --error-logfile - \
+    app:app
+Restart=on-failure
+RestartSec=5
+
+# Note on startup and the database: app.py retries reaching the database
+# in a background thread rather than crashing outright if it's not
+# reachable yet (see config.STARTUP_DB_RETRY_SECONDS /
+# STARTUP_DB_MAX_RETRIES). That retry runs in the background specifically
+# so it does NOT block gunicorn's worker boot — the app starts accepting
+# requests immediately regardless of database state, so there's no need
+# to raise --timeout above gunicorn's default (30s) to accommodate it.
+# Any request that arrives before the database is reachable just gets
+# the same degraded-state page a request would get if the database went
+# down after a successful startup.
+
+[Install]
+WantedBy=multi-user.target
+
+# Note on Group=www-data: this makes gunicorn's own process (and
+# anything it creates, e.g. attachment files under UPLOAD_FOLDER) group-
+# owned by www-data rather than the app's own "passdown" group — a
+# reasonable simplification for a single-app box. If you'd rather keep
+# app-owned files under a "passdown" group and only grant www-data
+# socket access, use Group=passdown plus SupplementaryGroups=www-data
+# instead, and set UPLOAD_FOLDER's directory group explicitly if needed.

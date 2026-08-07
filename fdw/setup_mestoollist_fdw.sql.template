@@ -1,0 +1,44 @@
+-- Provisions postgres_fdw access to the MES database and (re)creates the
+-- mestoollist view that the passdown app's Tool / Entity dropdown reads.
+--
+-- This is a TEMPLATE — the ${...} placeholders are filled in from .env by
+-- scripts/setup_fdw.sh, which then runs the result against the passdown
+-- database. Don't run this file directly with psql; run the script.
+--
+-- Safe to re-run: it drops and recreates the server, user mapping,
+-- foreign tables, and view each time, so credential or host changes in
+-- .env take effect on the next run.
+
+CREATE EXTENSION IF NOT EXISTS postgres_fdw;
+
+-- CASCADE also drops the user mapping, imported foreign tables, and the
+-- mestoollist view (since it depends on those tables) — all recreated below.
+DROP SERVER IF EXISTS mes_server CASCADE;
+
+CREATE SERVER mes_server
+    FOREIGN DATA WRAPPER postgres_fdw
+    OPTIONS (host '${MES_FDW_HOST}', port '${MES_FDW_PORT}', dbname '${MES_FDW_DBNAME}');
+
+CREATE USER MAPPING FOR CURRENT_USER
+    SERVER mes_server
+    OPTIONS (user '${MES_FDW_USER}', password '${MES_FDW_PASSWORD}');
+
+CREATE SCHEMA IF NOT EXISTS mes;
+
+IMPORT FOREIGN SCHEMA "${MES_FDW_REMOTE_SCHEMA}"
+    LIMIT TO ("Tool_Selection", "Location_Selection")
+    FROM SERVER mes_server INTO mes;
+
+-- View: public.mestoollist
+CREATE OR REPLACE VIEW public.mestoollist
+ AS
+ SELECT "Tool_Selection"."Tool_ID" AS id,
+    "Tool_Selection"."ToolName" AS mestoolname,
+    loc."Location"
+   FROM mes."Tool_Selection"
+     LEFT JOIN mes."Location_Selection" loc ON "Tool_Selection"."ToolLocation" = loc."Location_ID"
+  WHERE "Tool_Selection"."Chamber"::text = 'Main Tool'::text
+  ORDER BY "Tool_Selection"."ToolName";
+
+ALTER TABLE public.mestoollist
+    OWNER TO postgres;

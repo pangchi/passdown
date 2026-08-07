@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+
+<section class="add-entry">
+    <h2>Add a team member</h2>
+    <form method="post" action="{{ url_for('add_name_route') }}">
+        <label>
+            Name
+            <input type="text" name="name" placeholder="Full name" required>
+        </label>
+        <button type="submit">Add</button>
+    </form>
+</section>
+
+<section class="filters">
+    <h2>Current team members</h2>
+    {% if members %}
+        {% for m in members %}
+            <article class="entry">
+                <div class="entry-meta">
+                    <span class="entry-author">{{ m.name }}</span>
+                </div>
+                <div class="entry-actions">
+                    <form method="post" action="{{ url_for('delete_name_route', member_id=m.id) }}"
+                          onsubmit="return confirm('Remove {{ m.name }}? Existing passdown entries will keep this name.');"
+                          class="inline-form">
+                        <button type="submit" class="link-button">Remove</button>
+                    </form>
+                </div>
+            </article>
+        {% endfor %}
+    {% else %}
+        <p class="empty">No team members yet — add one above.</p>
+    {% endif %}
+</section>
+
+<p><a href="{{ url_for('index') }}">&larr; Back to log</a></p>
+
+{% endblock %}

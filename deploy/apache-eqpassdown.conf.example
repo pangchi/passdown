@@ -1,0 +1,88 @@
+# Example Apache config for reverse-proxying the passdown app (running
+# under gunicorn, bound to a Unix socket — see eqpassdown.service.example)
+# at a subfolder path, e.g. https://yourhost/eqpassdown/ instead of the
+# domain root.
+#
+# The socket path here (/run/eqpassdown/eqpassdown.sock) must match
+# --bind in the gunicorn command / eqpassdown.service.example. Adjust
+# the subfolder path (/eqpassdown/) to taste.
+#
+# Requires these Apache modules enabled (proxy's Unix-socket support
+# needs Apache >= 2.4.9, which any current Ubuntu has):
+#   sudo a2enmod proxy proxy_http headers
+#   sudo systemctl restart apache2
+#
+# Also requires Apache's own user (www-data on Ubuntu) to be able to
+# reach the socket — eqpassdown.service.example already sets that up
+# via Group=www-data + RuntimeDirectoryMode=0770 on the systemd side;
+# no separate Apache-side permission change needed.
+#
+# WHERE THIS GOES: this file is a <Location> block, not a full
+# <VirtualHost> — Apache won't load it on its own from sites-available/
+# the way a normal vhost file would. Two options:
+#
+#   1. (Simplest) Paste its contents directly inside the <VirtualHost>
+#      block of whichever site config you're adding this to, e.g.
+#      /etc/apache2/sites-available/000-default.conf, or your SSL
+#      vhost (often /etc/apache2/sites-available/<yoursite>-le-ssl.conf
+#      if created by Certbot). Then:
+#        sudo apache2ctl configtest   # sanity-check syntax
+#        sudo systemctl reload apache2
+#
+#   2. (Keeps it as its own file) Copy this file somewhere Apache can
+#      read, e.g. /etc/apache2/eqpassdown.conf, and add one line inside
+#      the same <VirtualHost> block:
+#        Include /etc/apache2/eqpassdown.conf
+#      This keeps the block in its own file/repo copy rather than
+#      pasted inline, at the cost of one extra Include line to remember.
+#      (This is a plain Include, not the conf-available/a2enconf
+#      mechanism — that's for server-wide snippets loaded outside any
+#      VirtualHost, not for vhost-specific blocks like this one.)
+#
+#   Remember: if you're serving both HTTP and HTTPS from separate
+#   <VirtualHost> blocks/files (e.g. a Certbot-created *-le-ssl.conf),
+#   this block — and the RedirectMatch below it — needs to go in BOTH.
+#   Apache treats each VirtualHost independently, so adding it to only
+#   one leaves the other returning a plain Apache 404 for /eqpassdown/.
+#
+# Either way, this has to end up *inside* a <VirtualHost> block — it
+# can't sit at the top level of an Apache config file.
+
+# Without this, https://yourhost/eqpassdown (no trailing slash) 404s —
+# <Location /eqpassdown/> below only matches requests that already have
+# the trailing slash, since Apache matches that prefix literally. This
+# redirect catches the no-slash form and sends it to the slash form
+# before the <Location> block even gets a chance to look at it. Needs
+# mod_alias, which is a default-enabled Apache module (no a2enmod step
+# needed for it specifically).
+RedirectMatch ^/eqpassdown$ /eqpassdown/
+
+<Location /eqpassdown/>
+    # Unix-socket proxy syntax: "unix:<socket path>|<the URL Apache
+    # pretends it's proxying to>". The URL after the "|" is basically a
+    # formality gunicorn needs, not a real network destination — the
+    # actual connection goes over the socket.
+    ProxyPass "unix:/run/eqpassdown/eqpassdown.sock|http://localhost/"
+    ProxyPassReverse "unix:/run/eqpassdown/eqpassdown.sock|http://localhost/"
+
+    # Tells Flask's ProxyFix (already wired up in app.py) that requests
+    # arrived under /eqpassdown, so url_for() generates links, static
+    # assets, and attachment URLs with that prefix instead of pointing
+    # at the domain root. Without this, the page loads but every link,
+    # form action, and stylesheet reference will be wrong.
+    RequestHeader set X-Forwarded-Prefix "/eqpassdown"
+
+    # If Apache is terminating HTTPS in front of gunicorn (typical),
+    # this makes Flask aware the original request was HTTPS, so any
+    # absolute URLs it builds use https:// instead of http://.
+    RequestHeader set X-Forwarded-Proto "https"
+</Location>
+
+# mod_proxy_http already adds X-Forwarded-For and X-Forwarded-Host
+# automatically — no need to set those manually.
+#
+# If you're not using a subfolder (mounting at the domain root instead),
+# the socket syntax is the same — just use:
+#   ProxyPass "unix:/run/eqpassdown/eqpassdown.sock|http://localhost/" and
+#   ProxyPassReverse the same, at "/" instead of <Location /eqpassdown/>,
+#   and drop the X-Forwarded-Prefix header.

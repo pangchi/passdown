@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}User Guide — Shift Passdown{% endblock %}
+{% block content %}
+
+<section>
+    <h2>What this is</h2>
+    <p>
+        A shared log for handing off information between shifts. Log an
+        issue, a task, or anything the next shift should know — everyone
+        on the team sees it, filters it, and can follow up on it.
+        No login required; just pick your name and go.
+    </p>
+</section>
+
+<section>
+    <h2>Adding an entry</h2>
+    <p>Fill in the "New entry" form on the left. Here's what each field means:</p>
+    <ul>
+        <li><strong>Name(s)</strong> — who this entry is from. Type or pick a name, then click <strong>Add</strong> (or just press Enter) — you can add more than one person to the same entry. Don't see your name? Click the <strong>+</strong> next to "Name(s)" to add yourself to the team list.</li>
+        <li><strong>Shift</strong> — Day or Night. Auto-picked based on the time of day, but change it if you're logging something for the other shift.</li>
+        <li><strong>Tool / Entity</strong> — which tool or piece of equipment this is about. Start typing to search.</li>
+        <li><strong>Chamber</strong> <em>(optional)</em> — free text, if it applies.</li>
+        <li><strong>Category</strong> — PM, CM, SPC, or whatever your site uses. Click the <strong>+</strong> next to "Category" to add a new one if it's missing.</li>
+        <li><strong>Task start / Task end</strong> <em>(optional)</em> — when the task happened. Task start is pre-filled with the current time; click into Task end and it'll default to match Task start, so you just adjust the time forward.</li>
+        <li><strong>Problem Statement</strong> — required. What's going on.</li>
+        <li><strong>Action Item(s), Current Status, Follow up</strong> <em>(all optional)</em> — fill in whichever apply. Leave the rest blank.</li>
+        <li><strong>Attachment(s)</strong> <em>(optional)</em> — drag and drop files onto the box, or click it to browse. Add files in more than one round if you need to — they pile up rather than replacing each other. Click the "×" next to a file to remove it before submitting.</li>
+    </ul>
+</section>
+
+<section>
+    <h2>@mentioning someone or #tagging something</h2>
+    <p>
+        In Problem Statement, Action Item(s), Current Status, or Follow
+        up, type <strong>@</strong> to bring up a list of team members —
+        pick one to mention them. Type <strong>#</strong> to bring up
+        tags that have been used before — pick one, or just keep typing
+        to make up a new tag on the spot (like <code>#urgent</code> or
+        <code>#chamber-a</code>). Both show up as clickable bubbles on
+        the entry once it's saved — more on that below.
+    </p>
+</section>
+
+<section>
+    <h2>Reading the log</h2>
+    <p>
+        Entries are grouped by day, newest first. Each one shows who it's
+        from, the shift, tool, category, and any hashtags or mentions —
+        as colored bubbles. <strong>Click any bubble to filter the log to
+        just that name, shift, tool, category, tag, or location</strong> —
+        click it again (or click "All") to clear that filter. You can
+        combine as many filters as you like at once.
+    </p>
+    <p>
+        The filter bar above the log has the same controls, plus a
+        search box that looks for a word or phrase anywhere in the
+        entry's text (Problem Statement, Action Items, Current Status,
+        Follow up). Use the 🔍 button or just press Enter to search, and
+        ✕ to clear the search without losing your other filters.
+    </p>
+</section>
+
+<section>
+    <h2>Working with an entry</h2>
+    <p>Each entry has three buttons at the bottom:</p>
+    <ul>
+        <li><strong>Copy</strong> — copies the entry's text to your clipboard, ready to paste into an email, chat, or wherever.</li>
+        <li><strong>Edit</strong> — change the note, task start/end, or who it's from. Nothing is ever silently overwritten: every edit keeps the previous version, viewable on the edit page.</li>
+        <li><strong>Delete</strong> — removes it from the log. It isn't actually erased from the system, just hidden — ask an admin if something needs to be permanently recovered.</li>
+    </ul>
+</section>
+
+<section>
+    <h2>Team names and categories</h2>
+    <p>
+        Use the <strong>Manage names</strong> and <strong>Manage
+        categories</strong> links at the top of the page (or the "+"
+        shortcuts next to those fields on the New Entry form) to add or
+        remove people and categories. Anyone can do this — no special
+        access needed.
+    </p>
+</section>
+
+<p><a href="{{ url_for('index') }}">&larr; Back to log</a></p>
+
+{% endblock %}
