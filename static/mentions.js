@@ -1,10 +1,12 @@
 // Lightweight @mention / #hashtag autocomplete for plain <textarea>
-// elements. Typing "@" suggests team member names; typing "#" suggests
-// hashtags previously used in other entries (see db.get_hashtags() —
-// there's no manual tag list, tags are just learned from usage). Arrow
-// keys, Enter/Tab, Escape, and mouse click all work; selecting an item
-// replaces the partial "@foo" / "#foo" token at the cursor with the
-// full name/tag plus a trailing space.
+// elements. Typing "@" suggests team member names AND tool/entity names
+// combined (an @mention can reference either — e.g. "@Alan" or "@CR1" —
+// distinguished server-side when rendering bubbles, not here); typing
+// "#" suggests hashtags previously used in other entries (see
+// db.get_hashtags() — there's no manual tag list, tags are just learned
+// from usage). Arrow keys, Enter/Tab, Escape, and mouse click all work;
+// selecting an item replaces the partial "@foo" / "#foo" token at the
+// cursor with the full name/tag plus a trailing space.
 function initMentionAutocomplete(textarea, names, tags) {
     if (!textarea) return;
 
@@ -120,14 +122,16 @@ function initMentionAutocomplete(textarea, names, tags) {
 }
 
 // Convenience: attach the widget to every free-text field inside a form
-// (by name), given a shared names/tags source. Fields that don't exist
-// in the given form (e.g. a page that doesn't have all four) are
-// silently skipped.
-function initMentionsForForm(formSelector, names, tags) {
+// (by name), given a shared names/tools/tags source. Fields that don't
+// exist in the given form (e.g. a page that doesn't have all four) are
+// silently skipped. names and tools are combined into one list for "@"
+// (deduplicated, in case a tool and a name happen to share a string).
+function initMentionsForForm(formSelector, names, tools, tags) {
     var form = document.querySelector(formSelector);
     if (!form) return;
+    var mentionables = Array.from(new Set((names || []).concat(tools || [])));
     ['problem_statement', 'action_items', 'current_status', 'follow_up'].forEach(function (fieldName) {
         var el = form.querySelector('textarea[name="' + fieldName + '"]');
-        if (el) initMentionAutocomplete(el, names, tags);
+        if (el) initMentionAutocomplete(el, mentionables, tags);
     });
 }

@@ -282,11 +282,15 @@
                         <p class="entry-field"><span class="field-label">Follow up</span> {{ e.follow_up }}</p>
                     {% endif %}
                 </div>
-                {% if e.hashtags or e.mentions %}
+                {% if e.hashtags or e.mentions or e.entity_mentions %}
                     <div class="entry-hashtags">
                         {% for name in e.mentions %}
                             <button type="button" class="entry-mention-bubble{% if name in author_filters %} entry-mention-bubble-active{% endif %}"
                                     data-filter-field="author" data-filter-value="{{ name }}" title="Filter by {{ name }} (mentioned)">@{{ name }}</button>
+                        {% endfor %}
+                        {% for t in e.entity_mentions %}
+                            <button type="button" class="entry-entity-mention-bubble{% if tool_filter == t %} entry-entity-mention-bubble-active{% endif %}"
+                                    data-filter-field="tool_entity" data-filter-value="{{ t }}" title="Filter by {{ t }} (mentioned)">@{{ t }}</button>
                         {% endfor %}
                         {% for t in e.hashtags %}
                             <button type="button" class="entry-tag-bubble{% if t in tag_filters %} entry-tag-bubble-active{% endif %}"
@@ -597,7 +601,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     initAttachmentPicker('add-entry-attachments');
-    initMentionsForForm('#add-entry-form', {{ names|tojson }}, {{ hashtags|tojson }});
+    initMentionsForForm('#add-entry-form', {{ names|tojson }}, {{ tools|tojson }}, {{ hashtags|tojson }});
     initNamePicker(
         'add-entry-namepicker',
         (restoredEntryState && restoredEntryState.author) ? restoredEntryState.author : {{ new_entry.author|tojson }}

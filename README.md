@@ -113,6 +113,19 @@ you don't already have your own convention.
   entry's own author bubbles (indigo), but clicking either toggles the
   same Name filter — so filtering by a name surfaces every entry that
   person is either credited on *or* mentioned in.
+- `@mentions` can also reference a **tool/entity** the same way — e.g.
+  `@CR1` — matched against the same tool list the Tool/Entity field and
+  filter already use, with the identical "longer names first, no
+  auto-add, plain text if unmatched" rules as person mentions above. The
+  `@` autocomplete in the free-text fields suggests both people and
+  tools combined; which one a given mention actually turned out to be is
+  only decided when it's rendered, based on which list it matched. Shown
+  as its own bubble style (amber, still `@Entity`) so it's visually
+  distinct from a person mention, and clicking it toggles the Tool/Entity
+  filter rather than Name. Like the Name filter, this checks both the
+  entry's actual `tool_entity` column *and* `@mentions` in its text — so
+  filtering by a tool also surfaces entries that only mention it without
+  being assigned to it, the same "OR" logic used for Name/author.
 - Hashtags are also filterable, same pattern as Name: a "Tags" row of
   toggleable checkboxes in the filter bar (only shown once at least one
   tag has been used anywhere), and every entry shows its own `#tags` as

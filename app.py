@@ -449,8 +449,18 @@ def _build_index_context(new_entry_overrides=None):
             params.extend([f"%{name}%", mention_pattern, mention_pattern, mention_pattern, mention_pattern])
         query += " AND (" + " OR ".join(name_conditions) + ")"
     if tool_filter:
-        query += " AND tool_entity = %s"
-        params.append(tool_filter)
+        # Same reasoning as author_filters above: an entry matches if the
+        # selected tool is either its actual tool_entity OR @mentioned in
+        # one of its 4 text fields — entity-mention bubbles reuse this
+        # same "tool_entity" filter (see index.html), so without this,
+        # clicking one would filter the very entry it came from right out
+        # of the results.
+        mention_pattern = "@" + pg_regex_escape(tool_filter) + r"([^A-Za-z0-9_-]|$)"
+        query += (
+            " AND (tool_entity = %s OR problem_statement ~* %s OR action_items ~* %s "
+            "OR current_status ~* %s OR follow_up ~* %s)"
+        )
+        params.extend([tool_filter, mention_pattern, mention_pattern, mention_pattern, mention_pattern])
     if category_filter:
         query += " AND category = %s"
         params.append(category_filter)
@@ -503,6 +513,7 @@ def _build_index_context(new_entry_overrides=None):
     attachments_by_entry = get_attachments_for_entries([e["id"] for e in entries])
     tool_locations = get_tool_locations()
     team_names = [m["name"] for m in get_names()]
+    tool_list = get_tool_list()
     for e in entries:
         e["attachments"] = attachments_by_entry.get(e["id"], [])
         e["hashtags"] = sorted(
@@ -512,6 +523,16 @@ def _build_index_context(new_entry_overrides=None):
         e["mentions"] = sorted(
             extract_mentions(
                 team_names, e["problem_statement"], e["action_items"], e["current_status"], e["follow_up"]
+            )
+        )
+        # @mentions can also reference a tool/entity (e.g. "@CR1"), not
+        # just a person — matched the same way as name mentions (against
+        # the known tool list, longest-name-first), just kept in a
+        # separate list so the two render as visually distinct bubbles
+        # and filter by different fields (tool_entity vs author).
+        e["entity_mentions"] = sorted(
+            extract_mentions(
+                tool_list, e["problem_statement"], e["action_items"], e["current_status"], e["follow_up"]
             )
         )
 
@@ -540,7 +561,7 @@ def _build_index_context(new_entry_overrides=None):
         "entries": entries,
         "names": team_names,
         "shifts": config.SHIFTS,
-        "tools": get_tool_list(),
+        "tools": tool_list,
         "categories": [c["name"] for c in get_categories()],
         "hashtags": get_hashtags(),
         "shift_filter": shift_filter,
@@ -1092,6 +1113,7 @@ def edit_entry(entry_id):
                 attachments=get_attachments_for_entries([entry_id]).get(entry_id, []),
                 names=[m["name"] for m in get_names()],
                 hashtags=get_hashtags(),
+                tools=get_tool_list(),
                 upload_accept=UPLOAD_ACCEPT,
             ), 400
 
@@ -1149,6 +1171,7 @@ def edit_entry(entry_id):
         attachments=get_attachments_for_entries([entry_id]).get(entry_id, []),
         names=[m["name"] for m in get_names()],
         hashtags=get_hashtags(),
+        tools=get_tool_list(),
         upload_accept=UPLOAD_ACCEPT,
     )
 

@@ -125,7 +125,7 @@
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     initAttachmentPicker('edit-entry-attachments');
-    initMentionsForForm('#edit-entry-form', {{ names|tojson }}, {{ hashtags|tojson }});
+    initMentionsForForm('#edit-entry-form', {{ names|tojson }}, {{ tools|tojson }}, {{ hashtags|tojson }});
     initNamePicker('edit-entry-namepicker', {{ entry.author|tojson }});
 
     // When Task end is focused and still empty, default it to Task start's
