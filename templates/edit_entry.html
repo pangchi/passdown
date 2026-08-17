@@ -7,12 +7,47 @@
     {% endfor %}
 </datalist>
 
+<datalist id="tools-datalist">
+    {% for t in tools %}
+        <option value="{{ t }}">
+    {% endfor %}
+</datalist>
+
 <section class="add-entry">
     <h2>Edit entry</h2>
     <p class="entry-meta">
         <span class="entry-shift">{{ entry.shift }}</span>
         <span class="entry-time" data-created="{{ entry.created_at.isoformat() }}"></span>
     </p>
+
+    {% if attachments %}
+        <label>Existing attachments</label>
+        <div class="entry-attachments">
+            {% for a in attachments %}
+                <div class="entry-attachment-item">
+                    {% if a.mime_type and a.mime_type.startswith('image/') %}
+                        <a href="{{ url_for('download_attachment', attachment_id=a.id) }}" target="_blank" class="attachment-image-link">
+                            <img src="{{ url_for('download_attachment', attachment_id=a.id) }}" alt="{{ a.original_filename }}" class="attachment-image">
+                        </a>
+                    {% elif opens_inline(a.original_filename) %}
+                        <a href="{{ url_for('download_attachment', attachment_id=a.id) }}" target="_blank" class="attachment-file-link">
+                            📄 {{ a.original_filename }}
+                        </a>
+                    {% else %}
+                        <a href="{{ url_for('download_attachment', attachment_id=a.id) }}" download="{{ a.original_filename }}" class="attachment-file-link">
+                            📎 {{ a.original_filename }}
+                        </a>
+                    {% endif %}
+                    <form method="post" action="{{ url_for('delete_attachment_route', attachment_id=a.id) }}"
+                          onsubmit="return confirm('Remove &quot;{{ a.original_filename }}&quot;? It\'ll be hidden from the entry, but not permanently deleted.');"
+                          class="inline-form">
+                        <button type="submit" class="link-button attachment-remove-button" title="Remove this attachment">✕ Remove</button>
+                    </form>
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
     <form method="post" action="{{ url_for('edit_entry', entry_id=entry.id) }}" enctype="multipart/form-data" id="edit-entry-form">
         <label>
             Name(s) <a href="{{ url_for('manage_names') }}" class="add-name-link" title="Add or remove team members">+</a>
@@ -26,6 +61,11 @@
             <div class="namepicker-chips"></div>
             <input type="hidden" name="author" class="namepicker-hidden">
         </div>
+        <label>
+            Tool / Entity
+            <input type="text" name="tool_entity" list="tools-datalist" autocomplete="off" required
+                   value="{{ entry.tool_entity }}">
+        </label>
         <div class="field-row">
             <label>
                 Task start <span class="optional-tag">(optional)</span>
@@ -55,25 +95,6 @@
             <textarea name="follow_up" rows="3">{{ entry.follow_up or '' }}</textarea>
         </label>
 
-        {% if attachments %}
-            <div class="entry-attachments">
-                {% for a in attachments %}
-                    {% if a.mime_type and a.mime_type.startswith('image/') %}
-                        <a href="{{ url_for('download_attachment', attachment_id=a.id) }}" target="_blank" class="attachment-image-link">
-                            <img src="{{ url_for('download_attachment', attachment_id=a.id) }}" alt="{{ a.original_filename }}" class="attachment-image">
-                        </a>
-                    {% elif opens_inline(a.original_filename) %}
-                        <a href="{{ url_for('download_attachment', attachment_id=a.id) }}" target="_blank" class="attachment-file-link">
-                            📄 {{ a.original_filename }}
-                        </a>
-                    {% else %}
-                        <a href="{{ url_for('download_attachment', attachment_id=a.id) }}" download="{{ a.original_filename }}" class="attachment-file-link">
-                            📎 {{ a.original_filename }}
-                        </a>
-                    {% endif %}
-                {% endfor %}
-            </div>
-        {% endif %}
         <label>
             Add attachment(s) <span class="optional-tag">(optional)</span>
         </label>

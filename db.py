@@ -138,6 +138,9 @@ ALTER TABLE passdown_entry_edits ADD COLUMN IF NOT EXISTS previous_follow_up TEX
 -- Name became editable too — track its prior value the same way.
 ALTER TABLE passdown_entry_edits ADD COLUMN IF NOT EXISTS previous_author TEXT;
 
+-- Tool/Entity became editable too — same reasoning.
+ALTER TABLE passdown_entry_edits ADD COLUMN IF NOT EXISTS previous_tool_entity VARCHAR(150);
+
 CREATE INDEX IF NOT EXISTS idx_passdown_edits_entry_id ON passdown_entry_edits (entry_id);
 
 CREATE TABLE IF NOT EXISTS team_members (
@@ -178,6 +181,12 @@ CREATE TABLE IF NOT EXISTS passdown_attachments (
     file_size          INTEGER,
     uploaded_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Removing an attachment from the edit page is soft, same as removing an
+-- entry — the row (and the file on disk) stay put, just hidden. is_deleted
+-- defaults FALSE so plain "ADD COLUMN" is safe on an existing table with rows.
+ALTER TABLE passdown_attachments ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE passdown_attachments ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS idx_passdown_attachments_entry_id ON passdown_attachments (entry_id);
 """
@@ -444,6 +453,7 @@ def get_hashtags():
 def log_entry_edit(
     entry_id,
     previous_author,
+    previous_tool_entity,
     previous_problem_statement,
     previous_action_items,
     previous_current_status,
@@ -459,12 +469,14 @@ def log_entry_edit(
     with get_cursor(commit=True) as cur:
         cur.execute(
             """INSERT INTO passdown_entry_edits
-               (entry_id, previous_author, previous_problem_statement, previous_action_items,
-                previous_current_status, previous_follow_up, previous_task_start, previous_task_end)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+               (entry_id, previous_author, previous_tool_entity, previous_problem_statement,
+                previous_action_items, previous_current_status, previous_follow_up,
+                previous_task_start, previous_task_end)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             (
                 entry_id,
                 previous_author,
+                previous_tool_entity,
                 previous_problem_statement,
                 previous_action_items,
                 previous_current_status,
@@ -509,13 +521,15 @@ def get_attachments_for_entries(entry_ids):
     """Return {entry_id: [attachment, ...]} for a batch of entry ids.
 
     One query for the whole page rather than one per entry. Returns an
-    empty dict if entry_ids is empty.
+    empty dict if entry_ids is empty. Soft-deleted attachments (see
+    soft_delete_attachment()) are excluded, same as soft-deleted entries
+    are excluded from the log.
     """
     if not entry_ids:
         return {}
     with get_cursor() as cur:
         cur.execute(
-            "SELECT * FROM passdown_attachments WHERE entry_id = ANY(%s) ORDER BY uploaded_at",
+            "SELECT * FROM passdown_attachments WHERE entry_id = ANY(%s) AND is_deleted = FALSE ORDER BY uploaded_at",
             (list(entry_ids),),
         )
         rows = cur.fetchall()
@@ -526,23 +540,51 @@ def get_attachments_for_entries(entry_ids):
 
 
 def get_attachment(attachment_id):
-    """Return a single attachment's metadata, or None."""
+    """Return a single attachment's metadata, or None — including if it's
+    been soft-deleted, same as soft-deleted entries aren't findable by id
+    either. Used both to serve a download and to look up an attachment
+    before removing it, so a stale/already-removed link 404s cleanly in
+    both cases rather than serving or re-processing a removed file.
+    """
     with get_cursor() as cur:
-        cur.execute("SELECT * FROM passdown_attachments WHERE id = %s", (attachment_id,))
+        cur.execute(
+            "SELECT * FROM passdown_attachments WHERE id = %s AND is_deleted = FALSE", (attachment_id,)
+        )
         return cur.fetchone()
+
+
+def soft_delete_attachment(attachment_id):
+    """Mark an attachment as removed without deleting the row or the file
+    on disk — matches the app's general non-destructive policy (compare
+    soft_delete_entry() for entries). Recoverable by a DB admin the same
+    way a soft-deleted entry is; the file itself is untouched, only
+    config.ATTACHMENT_PURGE_DISK_THRESHOLD auto-purge and manual cleanup
+    ever actually remove a file from disk.
+    """
+    with get_cursor(commit=True) as cur:
+        cur.execute(
+            "UPDATE passdown_attachments SET is_deleted = TRUE, deleted_at = NOW() WHERE id = %s",
+            (attachment_id,),
+        )
 
 
 def purge_oldest_attachments_over_disk_threshold(upload_dir):
     """Permanently delete the oldest attachments (file + DB row) while the
     disk holding upload_dir is at or above config.ATTACHMENT_PURGE_DISK_THRESHOLD
-    full. Deletes oldest-first (by uploaded_at), rechecking disk usage after
-    each one, and stops when usage drops below threshold, there are no more
-    attachments left, or config.ATTACHMENT_PURGE_BATCH_LIMIT deletions have
-    happened in this call — whichever comes first.
+    full. Already soft-deleted attachments (see soft_delete_attachment())
+    are purged first, regardless of age — recovering their disk space
+    costs nothing since they're already invisible in the UI — then falls
+    back to the oldest still-active ones if that's not enough. Rechecks
+    disk usage after each purge, and stops when usage drops below
+    threshold, there are no more attachments left, or
+    config.ATTACHMENT_PURGE_BATCH_LIMIT deletions have happened in this
+    call — whichever comes first.
 
-    Unlike everything else in this app, this IS destructive: a purged
-    attachment's file and metadata are both gone for good. Logs a warning
-    for each one purged so there's at least a trace in the server logs.
+    Unlike a soft-deleted attachment (row kept, file kept — see
+    soft_delete_attachment()), this IS destructive: a purged attachment's
+    file and metadata are both gone for good, whether it was already
+    soft-deleted or not. Logs a warning for each one purged so there's at
+    least a trace in the server logs.
 
     Returns the number of attachments purged (0 if none were needed).
     """
@@ -564,7 +606,7 @@ def purge_oldest_attachments_over_disk_threshold(upload_dir):
         with get_cursor() as cur:
             cur.execute(
                 "SELECT id, entry_id, stored_filename, original_filename "
-                "FROM passdown_attachments ORDER BY uploaded_at ASC LIMIT 1"
+                "FROM passdown_attachments ORDER BY is_deleted DESC, uploaded_at ASC LIMIT 1"
             )
             oldest = cur.fetchone()
 

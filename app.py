@@ -48,6 +48,7 @@ from db import (
     add_attachment,
     get_attachments_for_entries,
     get_attachment,
+    soft_delete_attachment,
     purge_oldest_attachments_over_disk_threshold,
 )
 
@@ -980,6 +981,7 @@ def add_entry():
 
 _EDIT_HISTORY_FIELD_LABELS = [
     ("author", "Name(s)"),
+    ("tool_entity", "Tool/Entity"),
     ("problem_statement", "Problem Statement"),
     ("action_items", "Action Item(s)"),
     ("current_status", "Current Status"),
@@ -1087,6 +1089,7 @@ def edit_entry(entry_id):
 
     if request.method == "POST":
         author = request.form.get("author", "").strip()
+        tool_entity = request.form.get("tool_entity", "").strip()
         problem_statement = request.form.get("problem_statement", "").strip()
         action_items = request.form.get("action_items", "").strip()
         current_status = request.form.get("current_status", "").strip()
@@ -1096,6 +1099,7 @@ def edit_entry(entry_id):
 
         submitted = {
             "author": author,
+            "tool_entity": tool_entity,
             "problem_statement": problem_statement,
             "action_items": action_items,
             "current_status": current_status,
@@ -1126,6 +1130,9 @@ def edit_entry(entry_id):
         if not author:
             return _redisplay_with_error("At least one name is required.")
 
+        if not tool_entity:
+            return _redisplay_with_error("Tool/Entity is required.")
+
         if not problem_statement:
             return _redisplay_with_error("Problem statement can't be empty.")
 
@@ -1137,6 +1144,7 @@ def edit_entry(entry_id):
         log_entry_edit(
             entry_id,
             current["author"],
+            current["tool_entity"],
             current["problem_statement"],
             current["action_items"],
             current["current_status"],
@@ -1148,11 +1156,11 @@ def edit_entry(entry_id):
         with get_cursor(commit=True) as cur:
             cur.execute(
                 """UPDATE passdown_entries
-                   SET author = %s, problem_statement = %s, action_items = %s, current_status = %s,
-                       follow_up = %s, task_start = %s, task_end = %s, updated_at = NOW()
+                   SET author = %s, tool_entity = %s, problem_statement = %s, action_items = %s,
+                       current_status = %s, follow_up = %s, task_start = %s, task_end = %s, updated_at = NOW()
                    WHERE id = %s""",
                 (
-                    author, problem_statement, action_items or None, current_status or None,
+                    author, tool_entity, problem_statement, action_items or None, current_status or None,
                     follow_up or None, task_start, task_end, entry_id,
                 ),
             )
@@ -1196,6 +1204,27 @@ def download_attachment(attachment_id):
         download_name=attachment["original_filename"],
         mimetype=attachment["mime_type"],
     )
+
+
+@app.route("/uploads/<int:attachment_id>/delete", methods=["POST"])
+def delete_attachment_route(attachment_id):
+    """Remove an attachment — soft, same as removing an entry: the row
+    is marked is_deleted and hidden everywhere, but neither it nor the
+    file on disk is actually deleted, so it's recoverable by a DB admin.
+    The one thing that still actually deletes an attachment's file is
+    config.ATTACHMENT_PURGE_DISK_THRESHOLD's auto-purge under disk
+    pressure — which purges already-soft-deleted attachments first,
+    before ever touching a still-active one.
+    """
+    attachment = get_attachment(attachment_id)
+    if attachment is None:
+        abort(404)
+
+    entry_id = attachment["entry_id"]
+    soft_delete_attachment(attachment_id)
+    logger.info("Attachment #%d removed from entry #%d (%r, soft delete)", attachment_id, entry_id, attachment["original_filename"])
+    flash(f'Removed "{attachment["original_filename"]}".', "success")
+    return redirect(url_for("edit_entry", entry_id=entry_id))
 
 
 @app.route("/guide")

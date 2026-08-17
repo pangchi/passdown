@@ -35,15 +35,19 @@ you don't already have your own convention.
   (`config.UPLOAD_FOLDER`), with only metadata + a pointer in Postgres.
 - **Auto-purge**: if the disk holding `../eqpassdown_uploads` (see
   `config.UPLOAD_FOLDER`) reaches 80% full
-  (`config.ATTACHMENT_PURGE_DISK_THRESHOLD`), the oldest attachments are
+  (`config.ATTACHMENT_PURGE_DISK_THRESHOLD`), attachments are
   automatically and **permanently** deleted — file and database row both
-  — oldest first, until usage drops back below that line or there's
-  nothing left to purge. This is the one destructive thing in the whole
-  app; everything else (edits, deletes) is deliberately non-destructive,
-  but unbounded attachment storage on a small disk needed a release
-  valve. Checked at startup and after every upload; each purge is logged
-  as a warning in the server log (see `journalctl -u eqpassdown` if running
-  under the systemd unit) so there's at least a record of what was
+  — until usage drops back below that line or there's nothing left to
+  purge. Already-removed attachments (soft-deleted from the edit page —
+  see below) are purged first regardless of age, since reclaiming their
+  disk space has zero impact on anyone; only once those are exhausted
+  does it start purging the oldest still-active attachments. This is the
+  one thing in the whole app that's ever truly destructive; everything
+  else (edits, deletes) is deliberately non-destructive, but unbounded
+  attachment storage on a small disk needed a release valve. Checked at
+  startup and after every upload; each purge is logged as a warning in
+  the server log (see `journalctl -u eqpassdown` if running under the
+  systemd unit) so there's at least a record of what was
   removed and when, even though the file/row itself is gone. Raise the
   threshold (or set it to `1.0`+) in `config.py` to disable it if you'd
   rather manage disk space manually.
@@ -93,7 +97,20 @@ you don't already have your own convention.
   start/end changes show as old range → new range. If an edit somehow
   touched nothing visible (e.g. only an attachment was added in that
   same save), that version just says so rather than showing an empty
-  diff.
+  diff. **Editable fields**: Name(s), Tool/Entity, Task start/end,
+  Problem Statement, Action Item(s), Current Status, Follow up — Shift,
+  Chamber, and Category are still fixed at creation time. Tool/Entity
+  changes are tracked in the diff history the same way every other field
+  is.
+- Attachments can be **removed** from the edit page, not just added —
+  soft, same as removing an entry: the row is hidden everywhere (with a
+  confirmation prompt first) but neither it nor the file on disk is
+  actually deleted, so it's recoverable by a DB admin. The one thing
+  that still genuinely deletes an attachment's file is the
+  disk-pressure auto-purge (`config.ATTACHMENT_PURGE_DISK_THRESHOLD`)
+  — which now purges already-removed attachments first, before ever
+  touching a still-active one, since recovering their disk space costs
+  nothing.
 - Problem Statement, Action Item(s), Current Status, and Follow up
   support **@mentions** and **#hashtags** — type `@` to search team
   member names (same roster as the Name field), or `#` to search

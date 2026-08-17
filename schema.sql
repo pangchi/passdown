@@ -79,6 +79,7 @@ ALTER TABLE passdown_entry_edits ADD COLUMN IF NOT EXISTS previous_action_items 
 ALTER TABLE passdown_entry_edits ADD COLUMN IF NOT EXISTS previous_current_status TEXT;
 ALTER TABLE passdown_entry_edits ADD COLUMN IF NOT EXISTS previous_follow_up TEXT;
 ALTER TABLE passdown_entry_edits ADD COLUMN IF NOT EXISTS previous_author TEXT;
+ALTER TABLE passdown_entry_edits ADD COLUMN IF NOT EXISTS previous_tool_entity VARCHAR(150);
 
 CREATE INDEX IF NOT EXISTS idx_passdown_edits_entry_id ON passdown_entry_edits (entry_id);
 
@@ -122,6 +123,11 @@ CREATE TABLE IF NOT EXISTS passdown_attachments (
     file_size          INTEGER,
     uploaded_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Removing an attachment from the edit page is soft, same as removing an
+-- entry — the row (and the file on disk) stay put, just hidden.
+ALTER TABLE passdown_attachments ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE passdown_attachments ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS idx_passdown_attachments_entry_id ON passdown_attachments (entry_id);
 
