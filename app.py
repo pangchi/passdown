@@ -135,7 +135,7 @@ def _inject_app_started_at():
     """Makes app_started_at (and app_version) available in every template
     without having to pass them explicitly from each render_template call
     — the footer lives in base.html, which every page extends."""
-    return {"app_started_at": APP_STARTED_AT.isoformat(), "app_version": config.APP_VERSION}
+    return {"app_started_at": APP_STARTED_AT.replace(microsecond=0).isoformat(), "app_version": config.APP_VERSION}
 
 # Create the table (and indexes) automatically on first launch if they
 # don't exist yet. Safe to run on every startup. If the database isn't
@@ -480,15 +480,18 @@ def _build_index_context(new_entry_overrides=None):
             params.extend([pattern, pattern, pattern, pattern])
         query += " AND (" + " OR ".join(tag_conditions) + ")"
     if search_query:
-        # Plain substring search across all 4 free-text fields (not
-        # word-boundary like the tag filter — this is a general text
-        # search, so "urgent" should also match "#urgent" or "urgently").
+        # Plain substring search (not word-boundary like the tag filter —
+        # this is a general text search, so "urgent" should also match
+        # "#urgent" or "urgently") across the 4 free-text fields plus
+        # Name(s) and Tool/Entity, so searching "CR1" or "Alan" finds
+        # entries by/about them even without using the dedicated filters.
         query += (
             " AND (problem_statement ILIKE %s OR action_items ILIKE %s "
-            "OR current_status ILIKE %s OR follow_up ILIKE %s)"
+            "OR current_status ILIKE %s OR follow_up ILIKE %s "
+            "OR author ILIKE %s OR tool_entity ILIKE %s)"
         )
         search_pattern = f"%{search_query}%"
-        params.extend([search_pattern, search_pattern, search_pattern, search_pattern])
+        params.extend([search_pattern] * 6)
 
     # Sort by task start when the entry has one, falling back to created_at —
     # keeps the client-side day grouping (which uses the same effective

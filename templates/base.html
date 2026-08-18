@@ -31,23 +31,11 @@
     </main>
 
     <footer>
-        <span id="build-date" data-build-date="{{ app_started_at }}" data-version="v{{ app_version }}"></span>
+        <span id="build-date">v{{ app_version }} · Built {{ app_started_at }}</span>
     </footer>
 
     <script src="{{ url_for('static', filename='attachments.js') }}"></script>
     <script src="{{ url_for('static', filename='namepicker.js') }}"></script>
     <script src="{{ url_for('static', filename='mentions.js') }}"></script>
-    <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            var el = document.getElementById('build-date');
-            if (!el || !el.dataset.buildDate) return;
-            var d = new Date(el.dataset.buildDate);
-            var pad = function (n) { return String(n).padStart(2, '0'); };
-            var version = el.dataset.version ? el.dataset.version + ' — ' : '';
-            el.textContent = version + 'Build: ' + d.toLocaleDateString(undefined, {
-                day: '2-digit', month: 'short', year: 'numeric'
-            }) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
-        });
-    </script>
 </body>
 </html>

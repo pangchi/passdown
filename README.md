@@ -8,7 +8,11 @@ tools.
 ## Version
 
 **v1.1.0** — set in `config.APP_VERSION`, shown in the footer of every
-page next to the build date (e.g. "v1.1.0 — Build: 05 Aug 2026 14:32").
+page next to the build timestamp, in ISO 8601 with an explicit UTC
+offset (e.g. "v1.1.0 · Built 2026-08-18T01:51:58+00:00"). Rendered
+server-side straight from `datetime.now(timezone.utc)` at process
+startup — always UTC regardless of the viewer's own timezone or the
+server's local system timezone.
 Bump `APP_VERSION` when you make a meaningful change, so what's running
 and what this README describes can be compared at a glance. There's no
 enforced format — plain `MAJOR.MINOR.PATCH` is a reasonable default if
@@ -77,7 +81,7 @@ you don't already have your own convention.
     ```
 - Filter by shift, tool/entity, category, and how many days back to show — options go up to 365 days, plus an "All time" option with no lower bound at all. Name filters as toggleable bubbles — click any number of names to show entries involving any of them (an entry matches if it lists at least one selected name). Every entry in the log also shows its name(s), shift, tool/entity, category (when set), and location (when known — see below) as clickable bubbles — clicking one toggles that filter directly from the log, without scrolling back up to the filter bar. Name works as an add-to-the-set toggle (multi-select); Shift/Tool/Category/Location toggle between that value and "All" since those filters are single-value. Names not in the `/names` roster (e.g. free text added via the explicit Add button) aren't clickable this way since there's no matching filter checkbox for them.
 - **Location** shows and filters entries by a tool's physical location — pulled live from `mestoollist`'s `Location` column (see "Setting up mestoollist"), keyed off each entry's Tool/Entity value. Not something typed in — it's looked up automatically, so an entry only gets a location bubble if its tool has one in the MES data. The Location filter (in the filter bar and the log's own bubbles) only appears at all once at least one entry resolves to a location; if the MES/FDW connection is down, entries just show no location bubble rather than erroring the page.
-- A **search box** at the top of the log searches Problem Statement, Action Item(s), Current Status, and Follow up for a plain substring match (case-insensitive) — combines with every other active filter (Name, Shift, Tool/Entity, Category, Tags, Location, Days back), narrowing the result set further rather than replacing the other filters. A 🔍 button submits it (Enter also works, same as any form field), and a ✕ button clears it — clearing only removes the search term, leaving every other active filter in place.
+- A **search box** at the top of the log searches Name(s), Tool/Entity, Problem Statement, Action Item(s), Current Status, and Follow up for a plain substring match (case-insensitive) — combines with every other active filter (Name, Shift, Tool/Entity, Category, Tags, Location, Days back), narrowing the result set further rather than replacing the other filters. A 🔍 button submits it (Enter also works, same as any form field), and a ✕ button clears it — clearing only removes the search term, leaving every other active filter in place.
 - **⬇ CSV / ⬇ DOCX / ⬇ HTML / ⬇ PDF** links next to the "Log" heading download exactly what's currently on screen — same filters, same search, same date range — in four formats (`/export.csv`, `/export.docx`, `/export.html`, `/export.pdf`), all sharing the same filtering logic as the log page itself. Each includes the same data: timestamps, name(s), shift, tool, chamber, category, location, all four text fields, tags, and mentions. Unlike the log page (newest first), all exports are sorted **oldest first** — reads more like a report that way.
   - **CSV**: one row per entry, for spreadsheets. Doesn't include attachments (no sensible way to represent a file in a table cell).
   - **DOCX**: one section per entry (heading + labeled fields), a real Word document via `python-docx`. Image attachments are **embedded directly in the document** (not linked) as long as they're under `config.EXPORT_INLINE_IMAGE_MAX_MB` (default 10 MB) — larger images and non-image files are listed by filename instead, since there's no lightweight way to embed an arbitrary file inline the way an image can be.
