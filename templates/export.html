@@ -46,6 +46,13 @@
         border: 1px solid #dde1e6;
         object-fit: cover;
     }
+    .attachments video {
+        max-width: 260px;
+        max-height: 200px;
+        border-radius: 6px;
+        border: 1px solid #dde1e6;
+        background: #000;
+    }
     .attachments a {
         display: inline-flex;
         align-items: center;
@@ -116,6 +123,8 @@
                         <a href="{{ url_for('download_attachment', attachment_id=a.id, _external=True) }}" target="_blank">
                             <img src="{{ url_for('download_attachment', attachment_id=a.id, _external=True) }}" alt="{{ a.original_filename }}">
                         </a>
+                    {% elif a.mime_type and a.mime_type.startswith('video/') %}
+                        <video src="{{ url_for('download_attachment', attachment_id=a.id, _external=True) }}" controls preload="metadata" title="{{ a.original_filename }}"></video>
                     {% else %}
                         <a href="{{ url_for('download_attachment', attachment_id=a.id, _external=True) }}" target="_blank">
                             📎 {{ a.original_filename }}

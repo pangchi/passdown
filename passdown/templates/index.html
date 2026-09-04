@@ -1,0 +1,867 @@
+{% extends "base.html" %}
+{% block content %}
+
+<datalist id="names-datalist">
+    {% for n in names %}
+        <option value="{{ n }}">
+    {% endfor %}
+</datalist>
+<datalist id="tools-datalist">
+    {% for t in tools %}
+        <option value="{{ t }}">
+    {% endfor %}
+</datalist>
+
+<div class="layout-two-col">
+<div class="layout-left">
+<section class="add-entry">
+    <h2>New entry</h2>
+    <div class="db-warning{% if db_entry_disabled %} db-warning-blocked{% endif %}" id="db-warning-banner" {% if not db_warning %}hidden{% endif %}>
+        <span id="db-warning-text">
+            {% if db_entry_disabled %}
+                ⚠ Database connection has been down for a while — new entries
+                can't be saved right now. This form is disabled until it's back.
+            {% else %}
+                ⚠ Database connection issue detected — the log may be out of
+                date and saving may not work. If this doesn't clear up shortly,
+                new entries will be temporarily disabled.
+            {% endif %}
+        </span>
+    </div>
+    <form method="post" action="{{ url_for('add_entry') }}" enctype="multipart/form-data" id="add-entry-form"
+          {% if db_entry_disabled %}aria-disabled="true"{% endif %}>
+        <fieldset id="add-entry-fieldset" {% if db_entry_disabled %}disabled{% endif %} style="border:0; padding:0; margin:0;">
+        <label>
+            Name(s) <a href="{{ url_for('manage_names') }}" class="add-name-link" title="Add or remove team members">+</a>
+        </label>
+        <div class="namepicker" id="add-entry-namepicker">
+            <div class="namepicker-row">
+                <input type="text" class="namepicker-text" list="names-datalist" autocomplete="off"
+                       placeholder="Type or select a name, then Add">
+                <button type="button" class="namepicker-add">Add</button>
+            </div>
+            <div class="namepicker-chips"></div>
+            <input type="hidden" name="author" class="namepicker-hidden">
+        </div>
+        <label>
+            Shift
+            <select name="shift" required>
+                {% for s in shifts %}
+                    <option value="{{ s }}" {% if s == new_entry.shift %}selected{% endif %}>{{ s }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>
+            Tool / Entity
+            <input type="text" name="tool_entity" list="tools-datalist" autocomplete="off"
+                   placeholder="Type or select a tool/entity" id="add-entry-tool" value="{{ new_entry.tool_entity }}" required>
+        </label>
+        <div class="field-row">
+            <label>
+                Chamber <span class="optional-tag">(optional)</span>
+                <input type="text" name="chamber" placeholder="Chamber" value="{{ new_entry.chamber }}">
+            </label>
+            <label>
+                Category <a href="{{ url_for('manage_categories') }}" class="add-name-link" title="Add or remove categories">+</a>
+                <select name="category" required>
+                    <option value="" disabled {% if not new_entry.category %}selected{% endif %}>Select category</option>
+                    {% for c in categories %}
+                        <option value="{{ c }}" {% if c == new_entry.category %}selected{% endif %}>{{ c }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+        </div>
+        <div class="field-row">
+            <label>
+                Task start <span class="optional-tag">(optional)</span>
+                <input type="datetime-local" name="task_start" value="{{ new_entry.task_start }}">
+            </label>
+            <label>
+                Task end <span class="optional-tag">(optional)</span>
+                <input type="datetime-local" name="task_end" value="{{ new_entry.task_end }}">
+            </label>
+        </div>
+        <label>
+            Problem Statement
+            <textarea name="problem_statement" rows="3" placeholder="What's the problem?" required>{{ new_entry.problem_statement }}</textarea>
+        </label>
+        <label>
+            Action Item(s) <span class="optional-tag">(optional)</span>
+            <textarea name="action_items" rows="3" placeholder="What was done / needs to be done?">{{ new_entry.action_items }}</textarea>
+        </label>
+        <label>
+            Current Status <span class="optional-tag">(optional)</span>
+            <textarea name="current_status" rows="3" placeholder="Where things stand now">{{ new_entry.current_status }}</textarea>
+        </label>
+        <label>
+            Follow up <span class="optional-tag">(optional)</span>
+            <textarea name="follow_up" rows="3" placeholder="What the next shift should follow up on">{{ new_entry.follow_up }}</textarea>
+        </label>
+        <label>
+            Attachment(s) <span class="optional-tag">(optional)</span>
+        </label>
+        <div class="attachment-picker" id="add-entry-attachments">
+            <div class="attachment-dropzone" tabindex="0" role="button">
+                Drag files here, or click to browse
+            </div>
+            <input type="file" name="attachments" multiple accept="{{ upload_accept }}" class="attachment-input-hidden">
+            <ul class="attachment-filelist"></ul>
+        </div>
+        <button type="submit" id="add-entry-submit">Add entry</button>
+        </fieldset>
+    </form>
+</section>
+</div>
+
+<div class="layout-resizer" id="layout-resizer" title="Drag to resize. Drag fully left, or double-click, to minimize.">
+    <span class="layout-resizer-grip"></span>
+    <button type="button" class="layout-resizer-toggle" id="layout-resizer-toggle" title="Expand New Entry panel" hidden>&rsaquo;</button>
+</div>
+
+<div class="layout-right">
+<section class="filters">
+    <h2>Log
+        <span class="export-links">
+            <a href="{{ url_for('export_csv') }}" class="export-link" data-export-format="csv" title="Download the currently filtered log as CSV">⬇ CSV</a>
+            <a href="{{ url_for('export_docx') }}" class="export-link" data-export-format="docx" title="Download the currently filtered log as a Word document">⬇ DOCX</a>
+            <a href="{{ url_for('export_html') }}" class="export-link" data-export-format="html" title="Download the currently filtered log as a standalone HTML file">⬇ HTML</a>
+            <a href="{{ url_for('export_pdf') }}" class="export-link" data-export-format="pdf" title="Download the currently filtered log as a PDF">⬇ PDF</a>
+        </span>
+    </h2>
+    <form method="get" action="{{ url_for('index') }}" class="filter-form" id="log-filter-form">
+        <div class="log-search">
+            <input type="text" name="q" id="log-search-input" value="{{ search_query }}"
+                   placeholder="Search Name, Tool/Entity, Problem Statement, Action Items, Current Status, Follow up...">
+            <button type="submit" class="log-search-button" title="Search" aria-label="Search">🔍</button>
+            <button type="button" class="log-search-button log-search-reset" id="log-search-reset"
+                    title="Clear search" aria-label="Clear search">✕</button>
+        </div>
+        <div class="name-bubbles">
+            <span class="name-bubbles-label">Name</span>
+            {% for n in names %}
+                <label class="name-bubble">
+                    <input type="checkbox" name="author" value="{{ n }}"
+                           {% if n in author_filters %}checked{% endif %} onchange="this.form.requestSubmit()">
+                    <span>{{ n }}</span>
+                </label>
+            {% endfor %}
+        </div>
+        {% if hashtags %}
+            <div class="name-bubbles">
+                <span class="name-bubbles-label">Tags</span>
+                {% for t in hashtags %}
+                    <label class="name-bubble">
+                        <input type="checkbox" name="tag" value="{{ t }}"
+                               {% if t in tag_filters %}checked{% endif %} onchange="this.form.requestSubmit()">
+                        <span>#{{ t }}</span>
+                    </label>
+                {% endfor %}
+            </div>
+        {% endif %}
+        <div class="filter-row">
+            <label>
+                Shift
+                <select name="shift" onchange="this.form.requestSubmit()">
+                    <option value="" {% if not shift_filter %}selected{% endif %}>All</option>
+                    {% for s in shifts %}
+                        <option value="{{ s }}" {% if shift_filter == s %}selected{% endif %}>{{ s }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>
+                Tool / Entity
+                <input type="text" name="tool_entity" list="tools-datalist" autocomplete="off"
+                       value="{{ tool_filter }}" placeholder="All" onchange="this.form.requestSubmit()">
+            </label>
+            <label>
+                Category
+                <select name="category" onchange="this.form.requestSubmit()">
+                    <option value="" {% if not category_filter %}selected{% endif %}>All</option>
+                    {% for c in categories %}
+                        <option value="{{ c }}" {% if category_filter == c %}selected{% endif %}>{{ c }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            {% if locations %}
+                <label>
+                    Location
+                    <select name="location" onchange="this.form.requestSubmit()">
+                        <option value="" {% if not location_filter %}selected{% endif %}>All</option>
+                        {% for l in locations %}
+                            <option value="{{ l }}" {% if location_filter == l %}selected{% endif %}>{{ l }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+            {% endif %}
+            <label>
+                Days back
+                <select name="days" onchange="this.form.requestSubmit()">
+                    {% for d in [1, 3, 7, 14, 30, 90, 365] %}
+                        <option value="{{ d }}" {% if days_back == d %}selected{% endif %}>{{ d }}</option>
+                    {% endfor %}
+                    <option value="all" {% if days_back is none %}selected{% endif %}>All time</option>
+                </select>
+            </label>
+        </div>
+    </form>
+
+    <details class="archive-export" {% if date_from or date_to %}open{% endif %}>
+        <summary>Archive export</summary>
+        <form method="get" action="{{ url_for('export_csv') }}" class="archive-export-form">
+            <label>
+                From
+                <input type="date" name="date_from" value="{{ date_from }}">
+            </label>
+            <label>
+                To
+                <input type="date" name="date_to" value="{{ date_to }}">
+            </label>
+            <button type="submit" formaction="{{ url_for('export_pdf') }}">⬇ PDF</button>
+            <button type="submit" formaction="{{ url_for('export_csv') }}">⬇ CSV</button>
+        </form>
+        <p class="archive-export-hint">
+            Exports every entry in that date range, regardless of the filters above —
+            a complete record for filing away, not a filtered view. Leave a date blank
+            for an open-ended range.
+        </p>
+    </details>
+</section>
+
+{% if entries %}
+    <div id="log-container">
+        {% for e in entries %}
+            <article class="entry"
+                     data-created="{{ e.created_at.isoformat() }}"
+                     data-updated="{{ e.updated_at.isoformat() if e.updated_at else '' }}"
+                     data-task-start="{{ e.task_start.isoformat() if e.task_start else '' }}"
+                     data-task-end="{{ e.task_end.isoformat() if e.task_end else '' }}"
+                     data-problem-statement="{{ e.problem_statement }}"
+                     data-action-items="{{ e.action_items or '' }}"
+                     data-current-status="{{ e.current_status or '' }}"
+                     data-follow-up="{{ e.follow_up or '' }}">
+                <div class="entry-meta">
+                    {% for n in e.author.split(',') %}
+                        {% set n = n.strip() %}
+                        {% if n %}
+                            <button type="button" class="entry-author-bubble{% if n in author_filters %} entry-author-bubble-active{% endif %}"
+                                    data-filter-field="author" data-filter-value="{{ n }}" title="Filter by {{ n }}">{{ n }} </button>
+                        {% endif %}
+                    {% endfor %}
+                    <button type="button" class="entry-shift-bubble{% if shift_filter == e.shift %} entry-shift-bubble-active{% endif %}"
+                            data-filter-field="shift" data-filter-value="{{ e.shift }}" title="Filter by {{ e.shift }} shift">{{ e.shift }} </button>
+                    {% if e.tool_entity %}
+                        <button type="button" class="entry-tool-bubble{% if tool_filter == e.tool_entity %} entry-tool-bubble-active{% endif %}"
+                                data-filter-field="tool_entity" data-filter-value="{{ e.tool_entity }}" title="Filter by {{ e.tool_entity }}">{{ e.tool_entity }} </button>
+                    {% endif %}
+                    {% if e.location %}
+                        <button type="button" class="entry-location-bubble{% if location_filter == e.location %} entry-location-bubble-active{% endif %}"
+                                data-filter-field="location" data-filter-value="{{ e.location }}" title="Filter by location {{ e.location }}">📍 {{ e.location }} </button>
+                    {% endif %}
+                    {% if e.chamber %}
+                        <span class="entry-chamber">{{ e.chamber }} </span>
+                    {% endif %}
+                    {% if e.category and e.category != 'unspecified' %}
+                        <button type="button" class="entry-category-bubble{% if category_filter == e.category %} entry-category-bubble-active{% endif %}"
+                                data-filter-field="category" data-filter-value="{{ e.category }}" title="Filter by {{ e.category }}">{{ e.category }} </button>
+                    {% endif %}
+                    <span class="entry-time"></span>
+                    <span class="entry-edited" hidden></span>
+                </div>
+                <div class="entry-fields">
+                    {% if e.tool_entity %}
+                        <p class="entry-tool-heading">{{ e.tool_entity }}</p>
+                    {% endif %}
+                    <p class="entry-field"><span class="field-label">Problem Statement</span> {{ e.problem_statement }}</p>
+                    {% if e.action_items %}
+                        <p class="entry-field"><span class="field-label">Action Item(s)</span> {{ e.action_items }}</p>
+                    {% endif %}
+                    {% if e.current_status %}
+                        <p class="entry-field"><span class="field-label">Current Status</span> {{ e.current_status }}</p>
+                    {% endif %}
+                    {% if e.follow_up %}
+                        <p class="entry-field"><span class="field-label">Follow up</span> {{ e.follow_up }}</p>
+                    {% endif %}
+                </div>
+                {% if e.hashtags or e.mentions or e.entity_mentions %}
+                    <div class="entry-hashtags">
+                        {% for name in e.mentions %}
+                            <button type="button" class="entry-mention-bubble{% if name in author_filters %} entry-mention-bubble-active{% endif %}"
+                                    data-filter-field="author" data-filter-value="{{ name }}" title="Filter by {{ name }} (mentioned)">@{{ name }}</button>
+                        {% endfor %}
+                        {% for t in e.entity_mentions %}
+                            <button type="button" class="entry-entity-mention-bubble{% if tool_filter == t %} entry-entity-mention-bubble-active{% endif %}"
+                                    data-filter-field="tool_entity" data-filter-value="{{ t }}" title="Filter by {{ t }} (mentioned)">@{{ t }}</button>
+                        {% endfor %}
+                        {% for t in e.hashtags %}
+                            <button type="button" class="entry-tag-bubble{% if t in tag_filters %} entry-tag-bubble-active{% endif %}"
+                                    data-filter-field="tag" data-filter-value="{{ t }}" title="Filter by #{{ t }}">#{{ t }}</button>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+                <p class="entry-task" hidden>Task: <span class="task-range"></span></p>
+                {% if e.attachments %}
+                    <div class="entry-attachments">
+                        {% for a in e.attachments %}
+                            {% if a.mime_type and a.mime_type.startswith('image/') %}
+                                <a href="{{ url_for('download_attachment', attachment_id=a.id) }}" target="_blank" class="attachment-image-link">
+                                    <img src="{{ url_for('download_attachment', attachment_id=a.id) }}" alt="{{ a.original_filename }}" class="attachment-image">
+                                </a>
+                            {% elif a.mime_type and a.mime_type.startswith('video/') %}
+                                <video src="{{ url_for('download_attachment', attachment_id=a.id) }}" controls preload="metadata" class="attachment-video" title="{{ a.original_filename }}"></video>
+                            {% elif opens_inline(a.original_filename) %}
+                                <a href="{{ url_for('download_attachment', attachment_id=a.id) }}" target="_blank" class="attachment-file-link">
+                                    📄 {{ a.original_filename }}
+                                </a>
+                            {% else %}
+                                <a href="{{ url_for('download_attachment', attachment_id=a.id) }}" download="{{ a.original_filename }}" class="attachment-file-link">
+                                    📎 {{ a.original_filename }}
+                                </a>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                {% endif %}
+                <div class="entry-actions">
+                    <button type="button" class="link-button copy-button">Copy</button>
+                    <a href="{{ url_for('edit_entry', entry_id=e.id) }}">Edit</a>
+                    <form method="post" action="{{ url_for('delete_entry', entry_id=e.id) }}"
+                          onsubmit="return confirm('Remove this entry from the log? It stays in the database and can be recovered by a DB admin.');" class="inline-form">
+                        <button type="submit" class="link-button">Delete</button>
+                    </form>
+                </div>
+            </article>
+        {% endfor %}
+    </div>
+{% else %}
+    <p class="empty">No entries in this range.</p>
+{% endif %}
+</div>
+</div>
+
+<script>
+// All displayed times are formatted here (client-side) using the
+// viewer's own browser timezone — the server only sends the absolute
+// instant (ISO 8601 with offset) via data-* attributes.
+document.addEventListener('DOMContentLoaded', function () {
+    // The database connection can go down at any time — not just at the
+    // moment a page happens to load — so this can't just be "check once
+    // at load and only poll if it was already broken." Poll continuously
+    // in the background and reflect the current state directly in the
+    // DOM (banner shown/hidden/escalated, New Entry form enabled/
+    // disabled) — no page reload involved at all, so it can't interrupt
+    // someone mid-typing in the New Entry form the way a reload would.
+    (function initDbHealthPolling() {
+        var banner = document.getElementById('db-warning-banner');
+        var bannerText = document.getElementById('db-warning-text');
+        var fieldset = document.getElementById('add-entry-fieldset');
+        var form = document.getElementById('add-entry-form');
+        var submitBtn = document.getElementById('add-entry-submit');
+        if (!banner || !bannerText || !fieldset || !form || !submitBtn) return;
+
+        var persistSeconds = {{ db_warning_persist_seconds }};
+        var briefMessage = '\u26a0 Database connection issue detected \u2014 the log may be out of ' +
+            'date and saving may not work. If this doesn\u2019t clear up shortly, ' +
+            'new entries will be temporarily disabled.';
+        var blockedMessage = '\u26a0 Database connection has been down for a while \u2014 new entries ' +
+            'can\u2019t be saved right now. This form is disabled until it\u2019s back.';
+
+        function applyState(ok, downSeconds) {
+            if (ok) {
+                banner.hidden = true;
+                banner.classList.remove('db-warning-blocked');
+                fieldset.disabled = false;
+                submitBtn.disabled = false;
+                form.removeAttribute('aria-disabled');
+                return;
+            }
+            var blocked = downSeconds >= persistSeconds;
+            bannerText.textContent = blocked ? blockedMessage : briefMessage;
+            banner.classList.toggle('db-warning-blocked', blocked);
+            banner.hidden = false;
+            fieldset.disabled = blocked;
+            // Grey out just the button the moment we know the DB is down at
+            // all — even before it's been down long enough to disable the
+            // rest of the form. No point letting someone submit something
+            // we already know can't be saved right now; they can keep
+            // typing (the rest of the fields stay editable until/unless it
+            // escalates to "blocked" above), just not send it yet.
+            submitBtn.disabled = true;
+            if (blocked) {
+                form.setAttribute('aria-disabled', 'true');
+            } else {
+                form.removeAttribute('aria-disabled');
+            }
+        }
+
+        function poll() {
+            fetch('{{ url_for("health_json") }}', { cache: 'no-store' })
+                .then(function (response) { return response.json(); })
+                .then(function (health) { applyState(health.ok, health.down_seconds || 0); })
+                .catch(function () { /* network hiccup reaching our own server — try again next tick */ });
+        }
+
+        setInterval(poll, 10000);
+    })();
+
+    // Prevent double-submission: grey out the button (and relabel it) the
+    // instant the form is submitted, so a second click before the page
+    // actually navigates away can't send the same entry twice. No need to
+    // ever re-enable it here — a full page reload follows shortly either
+    // way (success or a validation error redisplay), which starts fresh.
+    (function initSubmitOnce() {
+        var form = document.getElementById('add-entry-form');
+        var submitBtn = document.getElementById('add-entry-submit');
+        if (!form || !submitBtn) return;
+        form.addEventListener('submit', function () {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Saving\u2026';
+        });
+    })();
+
+    // Drag-to-resize / minimize the New Entry pane. Only meaningful in the
+    // two-column desktop layout (≥900px, see the media query in style.css)
+    // — on narrower screens the panes stack and the resizer is hidden via
+    // CSS, so none of this needs to run there.
+    (function initLayoutResizer() {
+        var leftPane = document.querySelector('.layout-left');
+        var resizer = document.getElementById('layout-resizer');
+        var toggleBtn = document.getElementById('layout-resizer-toggle');
+        var twoCol = document.querySelector('.layout-two-col');
+        if (!leftPane || !resizer || !toggleBtn || !twoCol) return;
+
+        var MIN_WIDTH = 260;       // narrowest the pane can be dragged to before it's still "open"
+        var COLLAPSE_WIDTH = 32;   // width when minimized — just enough to show the toggle button
+        var COLLAPSE_THRESHOLD = 140; // drag below this and it snaps closed instead of stopping here
+        var DEFAULT_WIDTH_FRACTION = 0.5; // matches the CSS default (50/50 split)
+
+        function applyWidth(px, collapsed) {
+            leftPane.classList.toggle('layout-left-collapsed', collapsed);
+            toggleBtn.hidden = !collapsed;
+            leftPane.style.flexBasis = collapsed ? COLLAPSE_WIDTH + 'px' : px + 'px';
+        }
+
+        function save(px, collapsed) {
+            try {
+                localStorage.setItem('passdownLayoutLeftWidth', String(px));
+                localStorage.setItem('passdownLayoutLeftCollapsed', collapsed ? '1' : '0');
+            } catch (err) { /* localStorage unavailable — just skip persisting */ }
+        }
+
+        // Restore a saved width/collapsed state, or fall back to the
+        // default 50/50 split on a first visit.
+        var savedWidth = null;
+        var savedCollapsed = false;
+        try {
+            var storedWidth = localStorage.getItem('passdownLayoutLeftWidth');
+            savedWidth = storedWidth ? parseFloat(storedWidth) : null;
+            savedCollapsed = localStorage.getItem('passdownLayoutLeftCollapsed') === '1';
+        } catch (err) { /* localStorage unavailable — just use the default */ }
+
+        var lastOpenWidth = (savedWidth && savedWidth >= MIN_WIDTH)
+            ? savedWidth
+            : Math.round(twoCol.getBoundingClientRect().width * DEFAULT_WIDTH_FRACTION) || 400;
+        applyWidth(lastOpenWidth, savedCollapsed);
+
+        function setCollapsed(collapsed) {
+            applyWidth(lastOpenWidth, collapsed);
+            save(lastOpenWidth, collapsed);
+        }
+
+        toggleBtn.addEventListener('click', function () { setCollapsed(false); });
+        resizer.addEventListener('dblclick', function () {
+            setCollapsed(!leftPane.classList.contains('layout-left-collapsed'));
+        });
+
+        var dragging = false;
+        var containerLeft = 0;
+
+        function onPointerMove(e) {
+            if (!dragging) return;
+            var x = e.clientX - containerLeft;
+            if (x < COLLAPSE_THRESHOLD) {
+                applyWidth(lastOpenWidth, true);
+                return;
+            }
+            var maxWidth = twoCol.getBoundingClientRect().width - MIN_WIDTH - resizer.offsetWidth;
+            var clamped = Math.max(MIN_WIDTH, Math.min(x, maxWidth));
+            lastOpenWidth = clamped;
+            applyWidth(clamped, false);
+        }
+
+        function onPointerUp() {
+            if (!dragging) return;
+            dragging = false;
+            resizer.classList.remove('layout-resizer-active');
+            leftPane.classList.remove('layout-left-dragging');
+            document.body.style.userSelect = '';
+            document.removeEventListener('pointermove', onPointerMove);
+            document.removeEventListener('pointerup', onPointerUp);
+            save(lastOpenWidth, leftPane.classList.contains('layout-left-collapsed'));
+        }
+
+        resizer.addEventListener('pointerdown', function (e) {
+            dragging = true;
+            containerLeft = twoCol.getBoundingClientRect().left;
+            resizer.classList.add('layout-resizer-active');
+            leftPane.classList.add('layout-left-dragging');
+            document.body.style.userSelect = 'none'; // avoid selecting page text while dragging
+            document.addEventListener('pointermove', onPointerMove);
+            document.addEventListener('pointerup', onPointerUp);
+            e.preventDefault();
+        });
+
+        // Keyboard access: arrow keys nudge the width, Enter/Space toggles
+        // collapse — makes the resizer usable without a mouse.
+        resizer.setAttribute('tabindex', '0');
+        resizer.setAttribute('role', 'separator');
+        resizer.setAttribute('aria-orientation', 'vertical');
+        resizer.addEventListener('keydown', function (e) {
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                e.preventDefault();
+                var delta = e.key === 'ArrowLeft' ? -20 : 20;
+                var maxWidth = twoCol.getBoundingClientRect().width - MIN_WIDTH - resizer.offsetWidth;
+                lastOpenWidth = Math.max(MIN_WIDTH, Math.min(lastOpenWidth + delta, maxWidth));
+                applyWidth(lastOpenWidth, false);
+                save(lastOpenWidth, false);
+            } else if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setCollapsed(!leftPane.classList.contains('layout-left-collapsed'));
+            }
+        });
+    })();
+
+    // The exports should download exactly what's currently shown, so
+    // just carry over the page's own query string (every filter/search
+    // param) onto each export link — no need to reconstruct it separately.
+    document.querySelectorAll('.export-link').forEach(function (link) {
+        link.href = link.href.split('?')[0] + window.location.search;
+    });
+
+    // A filter-triggered reload (bubble click, dropdown change, or picking a
+    // tool that auto-filters) shouldn't wipe out whatever's already been
+    // typed into the New Entry form. Read back anything saved just before
+    // that reload (see the submit listener below), before initializing the
+    // name picker so it can be seeded correctly.
+    var restoredEntryState = null;
+    try {
+        var savedEntryState = sessionStorage.getItem('passdownNewEntryState');
+        if (savedEntryState) {
+            sessionStorage.removeItem('passdownNewEntryState');
+            restoredEntryState = JSON.parse(savedEntryState);
+        }
+    } catch (err) { /* sessionStorage unavailable — just skip restoring */ }
+
+    // Any change to the filter form (checkbox, dropdown, bubble click, etc.)
+    // reloads the page. Without this, that reload jumps to the top and
+    // clears the New Entry form — instead, remember scroll position and
+    // everything typed into the New Entry form, and restore both after
+    // reload (scroll restore is at the end of this handler).
+    var filterFormEl = document.getElementById('log-filter-form');
+    if (filterFormEl) {
+        filterFormEl.addEventListener('submit', function () {
+            try {
+                sessionStorage.setItem('passdownScrollY', String(window.scrollY));
+            } catch (err) { /* sessionStorage unavailable — just skip restoring */ }
+
+            var addFormEl = document.getElementById('add-entry-form');
+            if (addFormEl) {
+                var state = {};
+                addFormEl.querySelectorAll('input[name], select[name], textarea[name]').forEach(function (el) {
+                    if (el.type === 'file') return; // browsers won't let us restore these anyway
+                    state[el.name] = el.value;
+                });
+                // The name picker's own text box may hold a typed-but-not-yet-
+                // added name — save it separately (not merged into the chip
+                // list) so restoring puts it back as unstaged text, not a
+                // chip the person never actually added.
+                var namePickerText = addFormEl.querySelector('.namepicker-text');
+                if (namePickerText && namePickerText.value.trim()) {
+                    state._pendingAuthorText = namePickerText.value.trim();
+                }
+                try {
+                    sessionStorage.setItem('passdownNewEntryState', JSON.stringify(state));
+                } catch (err) { /* sessionStorage unavailable — just skip restoring */ }
+            }
+        });
+    }
+
+    // Clear search: empty the box and, if a search was actually active,
+    // resubmit so the filter clears too. Uses requestSubmit() (not
+    // submit()) so the scroll/New-Entry-state preservation above still
+    // fires for this reload.
+    var searchResetBtn = document.getElementById('log-search-reset');
+    var searchInputEl = document.getElementById('log-search-input');
+    if (searchResetBtn && searchInputEl) {
+        searchResetBtn.addEventListener('click', function () {
+            var hadValue = searchInputEl.value !== '';
+            searchInputEl.value = '';
+            if (hadValue && filterFormEl) {
+                filterFormEl.requestSubmit();
+            } else {
+                searchInputEl.focus();
+            }
+        });
+    }
+
+    initAttachmentPicker('add-entry-attachments');
+    initMentionsForForm('#add-entry-form', {{ names|tojson }}, {{ tools|tojson }}, {{ hashtags|tojson }});
+    initNamePicker(
+        'add-entry-namepicker',
+        (restoredEntryState && restoredEntryState.author) ? restoredEntryState.author : {{ new_entry.author|tojson }}
+    );
+    if (restoredEntryState && restoredEntryState._pendingAuthorText) {
+        var namePickerTextEl = document.querySelector('#add-entry-namepicker .namepicker-text');
+        if (namePickerTextEl) {
+            namePickerTextEl.value = restoredEntryState._pendingAuthorText;
+        }
+    }
+
+    // Restore every other New Entry field (author was just handled above via
+    // the name picker; file inputs can't be restored — that's a browser
+    // limitation, not something JS can work around).
+    if (restoredEntryState) {
+        var addFormEl2 = document.getElementById('add-entry-form');
+        if (addFormEl2) {
+            Object.keys(restoredEntryState).forEach(function (fieldName) {
+                if (fieldName === 'author') return;
+                var el = addFormEl2.querySelector('[name="' + fieldName + '"]');
+                if (el && el.type !== 'file' && el.type !== 'hidden') {
+                    el.value = restoredEntryState[fieldName];
+                }
+            });
+        }
+    }
+
+    // The server's default Shift selection and Task start pre-fill (on a
+    // genuine fresh page load — not a validation-error redisplay, and not
+    // a filter-triggered reload restore, both handled above) are computed
+    // from the SERVER's own clock, which may be in a different timezone
+    // than whoever's using the app (e.g. server on UTC, shop floor on
+    // UTC+8) — recompute both from the viewer's actual browser clock here
+    // instead, so they're correct regardless of what timezone the server
+    // itself is running in.
+    if ({{ is_fresh_new_entry|tojson }} && !restoredEntryState) {
+        var localNow = new Date();
+        var localHour = localNow.getHours();
+        var dayShiftStart = {{ day_shift_start_hour }};
+        var dayShiftEnd = {{ day_shift_end_hour }};
+
+        var shiftSelectEl = document.querySelector('#add-entry-form select[name="shift"]');
+        if (shiftSelectEl) {
+            shiftSelectEl.value = (localHour >= dayShiftStart && localHour < dayShiftEnd) ? 'Day' : 'Night';
+        }
+
+        var taskStartEl = document.querySelector('#add-entry-form input[name="task_start"]');
+        if (taskStartEl) {
+            taskStartEl.value = localNow.getFullYear() + '-' + pad(localNow.getMonth() + 1) + '-' +
+                pad(localNow.getDate()) + 'T' + pad(localNow.getHours()) + ':' + pad(localNow.getMinutes());
+        }
+    }
+
+    // When Task end is focused and still empty, default it to Task start's
+    // date/time so the person only has to adjust the time forward.
+    var taskStartInput = document.querySelector('input[name="task_start"]');
+    var taskEndInput = document.querySelector('input[name="task_end"]');
+    if (taskStartInput && taskEndInput) {
+        taskEndInput.addEventListener('focus', function () {
+            if (!taskEndInput.value && taskStartInput.value) {
+                taskEndInput.value = taskStartInput.value;
+            }
+        });
+    }
+
+    // Selecting a tool in the New Entry form's Tool/Entity field auto-filters
+    // the log below to that tool — only when it's a real match from the
+    // datalist (not just any typed text), so a half-typed value doesn't
+    // reload the page. This does reload the page (fresh GET with the new
+    // filter), but the submit listener above preserves the rest of the form.
+    var addEntryToolInput = document.getElementById('add-entry-tool');
+    if (addEntryToolInput) {
+        addEntryToolInput.addEventListener('change', function () {
+            var value = addEntryToolInput.value.trim();
+            if (!value) return;
+            var datalist = document.getElementById('tools-datalist');
+            var matched = datalist && Array.prototype.some.call(
+                datalist.querySelectorAll('option'),
+                function (opt) { return opt.value === value; }
+            );
+            if (!matched) return;
+            var filterForm = document.getElementById('log-filter-form');
+            if (!filterForm) return;
+            var filterToolInput = filterForm.querySelector('[name="tool_entity"]');
+            if (!filterToolInput || filterToolInput.value === value) return;
+            filterToolInput.value = value;
+            filterForm.requestSubmit();
+        });
+    }
+
+    function pad(n) { return String(n).padStart(2, '0'); }
+    function timeStr(d) { return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+    function dateTimeStr(d) {
+        return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short' }) + ' ' + timeStr(d);
+    }
+    function formatDuration(ms) {
+        if (ms < 0) return null;
+        var totalMin = Math.round(ms / 60000);
+        var days = Math.floor(totalMin / 1440);
+        var hours = Math.floor((totalMin % 1440) / 60);
+        var mins = totalMin % 60;
+        var parts = [];
+        if (days) parts.push(days + 'd');
+        if (hours) parts.push(hours + 'h');
+        if (mins || !parts.length) parts.push(mins + 'm');
+        return parts.join(' ');
+    }
+
+    // navigator.clipboard requires a "secure context" (HTTPS, or
+    // localhost) — this app is commonly reached over plain HTTP on a
+    // local network (e.g. http://<pi-ip>:5050), which browsers don't
+    // treat as secure, so that API is often unavailable here. Falls back
+    // to the older execCommand('copy') approach (via a hidden textarea)
+    // in that case, which still works over plain HTTP.
+    function copyTextToClipboard(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+            return navigator.clipboard.writeText(text);
+        }
+        return new Promise(function (resolve, reject) {
+            var ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.left = '-9999px';
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            try {
+                var ok = document.execCommand('copy');
+                document.body.removeChild(ta);
+                if (ok) resolve(); else reject(new Error('execCommand copy failed'));
+            } catch (err) {
+                document.body.removeChild(ta);
+                reject(err);
+            }
+        });
+    }
+
+    function buildCopyText(entry) {
+        var values = [
+            entry.dataset.problemStatement,
+            entry.dataset.actionItems,
+            entry.dataset.currentStatus,
+            entry.dataset.followUp,
+        ];
+        return values.filter(function (v) { return v; }).join('\n\n');
+    }
+
+    var container = document.getElementById('log-container');
+    if (!container) return;
+
+    // Clicking a filter bubble on an entry (name, shift, tool, category)
+    // toggles that filter in the form above and resubmits. Name is a
+    // checkbox (multi-select); the rest are single-value select/text
+    // inputs, toggled between that value and "All"/empty.
+    container.addEventListener('click', function (e) {
+        var copyBtn = e.target.closest('.copy-button');
+        if (copyBtn) {
+            var entryEl = copyBtn.closest('.entry');
+            var text = entryEl ? buildCopyText(entryEl) : '';
+            copyTextToClipboard(text).then(function () {
+                var original = copyBtn.textContent;
+                copyBtn.textContent = 'Copied!';
+                setTimeout(function () { copyBtn.textContent = original; }, 1500);
+            }).catch(function () {
+                var original = copyBtn.textContent;
+                copyBtn.textContent = 'Copy failed';
+                setTimeout(function () { copyBtn.textContent = original; }, 1500);
+            });
+            return;
+        }
+
+        var bubble = e.target.closest('[data-filter-field]');
+        if (!bubble) return;
+        var field = bubble.dataset.filterField;
+        var value = bubble.dataset.filterValue;
+        var filterForm = document.getElementById('log-filter-form');
+        if (!filterForm) return;
+
+        if (field === 'author' || field === 'tag') {
+            var checkboxes = filterForm.querySelectorAll('input[name="' + field + '"]');
+            var target = null;
+            checkboxes.forEach(function (cb) {
+                if (cb.value === value) target = cb;
+            });
+            if (!target) return; // not a known name/tag with a matching filter checkbox — nothing to toggle
+            target.checked = !target.checked;
+        } else {
+            var input = filterForm.querySelector('[name="' + field + '"]');
+            if (!input) return;
+            input.value = (input.value === value) ? '' : value;
+        }
+        filterForm.requestSubmit();
+    });
+
+    var lastDateLabel = null;
+    container.querySelectorAll('.entry').forEach(function (entry) {
+        var createdIso = entry.dataset.created;
+        if (!createdIso) return;
+
+        // If a task start time was entered, the log displays that instead
+        // of the created-at timestamp — it's the more meaningful "when did
+        // this happen" for a shift log entry.
+        var effectiveIso = entry.dataset.taskStart || createdIso;
+        var effective = new Date(effectiveIso);
+
+        var dateLabel = effective.toLocaleDateString(undefined, {
+            weekday: 'long', day: '2-digit', month: 'long', year: 'numeric'
+        });
+        if (dateLabel !== lastDateLabel) {
+            var header = document.createElement('h3');
+            header.className = 'day-header';
+            header.textContent = dateLabel;
+            container.insertBefore(header, entry);
+            lastDateLabel = dateLabel;
+        }
+
+        var timeSpan = entry.querySelector('.entry-time');
+        if (timeSpan) timeSpan.textContent = timeStr(effective) + ' ';
+
+        var editedSpan = entry.querySelector('.entry-edited');
+        if (editedSpan) {
+            if (entry.dataset.updated) {
+                editedSpan.textContent = '(edited ' + timeStr(new Date(entry.dataset.updated)) + ')';
+                editedSpan.hidden = false;
+            } else {
+                editedSpan.hidden = true;
+            }
+        }
+
+        var taskStartIso = entry.dataset.taskStart;
+        var taskEndIso = entry.dataset.taskEnd;
+        if (taskStartIso || taskEndIso) {
+            var taskP = entry.querySelector('.entry-task');
+            var taskRange = entry.querySelector('.task-range');
+            var startText = taskStartIso ? dateTimeStr(new Date(taskStartIso)) : '?';
+            var endText = taskEndIso ? dateTimeStr(new Date(taskEndIso)) : '?';
+            var rangeText = startText + '\u2013' + endText;
+            if (taskStartIso && taskEndIso) {
+                var durationMs = new Date(taskEndIso) - new Date(taskStartIso);
+                var duration = formatDuration(durationMs);
+                if (duration) rangeText += ' (' + duration + ')';
+            }
+            taskRange.textContent = rangeText;
+            taskP.hidden = false;
+        }
+    });
+
+    // Restore the scroll position saved before a filter-triggered reload
+    // (see the top of this handler), now that day headers and entry
+    // content above are fully in place.
+    try {
+        var savedScrollY = sessionStorage.getItem('passdownScrollY');
+        if (savedScrollY !== null) {
+            sessionStorage.removeItem('passdownScrollY');
+            window.scrollTo(0, parseInt(savedScrollY, 10));
+        }
+    } catch (err) { /* sessionStorage unavailable — just skip restoring */ }
+});
+</script>
+
+{% endblock %}

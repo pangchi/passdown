@@ -306,6 +306,8 @@
                                 <a href="{{ url_for('download_attachment', attachment_id=a.id) }}" target="_blank" class="attachment-image-link">
                                     <img src="{{ url_for('download_attachment', attachment_id=a.id) }}" alt="{{ a.original_filename }}" class="attachment-image">
                                 </a>
+                            {% elif a.mime_type and a.mime_type.startswith('video/') %}
+                                <video src="{{ url_for('download_attachment', attachment_id=a.id) }}" controls preload="metadata" class="attachment-video" title="{{ a.original_filename }}"></video>
                             {% elif opens_inline(a.original_filename) %}
                                 <a href="{{ url_for('download_attachment', attachment_id=a.id) }}" target="_blank" class="attachment-file-link">
                                     📄 {{ a.original_filename }}

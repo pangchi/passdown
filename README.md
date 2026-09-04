@@ -28,15 +28,20 @@ you don't already have your own convention.
   drag and drop them onto the drop zone, or click it to browse; you can
   browse multiple times and each round adds to the pile rather than
   replacing it, with a "×" to remove a staged file before submitting.
-  Images display inline in the log; PDF, Word (doc/docx), and Excel
-  (xls/xlsx) attachments open in a new browser tab rather than forcing a
-  download (configurable via `config.INLINE_VIEW_EXTENSIONS`) — note
-  this is a genuine inline viewer only for PDF, since browsers don't
-  render Office formats natively; for those it just skips the forced
-  "Save As" and lets the browser/OS decide (often still a download or an
+  Images display inline in the log; **videos** (mp4/mov/webm) play
+  inline too, via a normal HTML5 `<video>` player with controls, rather
+  than forcing a download; PDF, Word (doc/docx), and Excel (xls/xlsx)
+  attachments open in a new browser tab rather than forcing a download
+  (configurable via `config.INLINE_VIEW_EXTENSIONS`) — note this is a
+  genuine inline viewer only for PDF, since browsers don't render Office
+  formats natively; for those it just skips the forced "Save As" and
+  lets the browser/OS decide (often still a download or an
   open-in-desktop-app prompt, depending on the browser). CSV and plain
   text attachments still show as a download link. Files are saved to disk
   (`config.UPLOAD_FOLDER`), with only metadata + a pointer in Postgres.
+  Allowed file types live in `config.IMAGE_EXTENSIONS` /
+  `VIDEO_EXTENSIONS` / `OTHER_ALLOWED_EXTENSIONS` — add an extension
+  there if something reasonable is still getting rejected.
 - **Auto-purge**: if the disk holding `../eqpassdown_uploads` (see
   `config.UPLOAD_FOLDER`) reaches 80% full
   (`config.ATTACHMENT_PURGE_DISK_THRESHOLD`), attachments are

@@ -60,10 +60,13 @@ UPLOAD_FOLDER = "../eqpassdown_uploads"
 MAX_UPLOAD_SIZE_MB = 200
 
 # File extensions accepted for upload (lowercase, no dot). Images in this
-# list are shown inline in the log; everything else shows as a download link.
+# list are shown inline in the log; videos are shown inline too (a
+# playable <video> element, not just a download link) — e.g. a phone's
+# WhatsApp-exported clip; everything else shows as a download link.
 IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "gif", "webp"}
+VIDEO_EXTENSIONS = {"mp4", "mov", "webm"}
 OTHER_ALLOWED_EXTENSIONS = {"pdf", "doc", "docx", "xls", "xlsx", "csv", "txt"}
-ALLOWED_EXTENSIONS = IMAGE_EXTENSIONS | OTHER_ALLOWED_EXTENSIONS
+ALLOWED_EXTENSIONS = IMAGE_EXTENSIONS | VIDEO_EXTENSIONS | OTHER_ALLOWED_EXTENSIONS
 
 # Auto-purge: if the disk holding UPLOAD_FOLDER is at or above this
 # fraction full, the oldest attachments are permanently deleted (file +

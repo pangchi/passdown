@@ -677,6 +677,13 @@ fieldset:disabled { opacity: 0.6; }
     border: 1px solid var(--border);
     object-fit: cover;
 }
+.attachment-video {
+    max-width: 260px;
+    max-height: 200px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: #000;
+}
 .attachment-file-link {
     display: inline-flex;
     align-items: center;

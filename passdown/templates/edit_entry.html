@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% block content %}
+
+<datalist id="names-datalist">
+    {% for n in names %}
+        <option value="{{ n }}">
+    {% endfor %}
+</datalist>
+
+<datalist id="tools-datalist">
+    {% for t in tools %}
+        <option value="{{ t }}">
+    {% endfor %}
+</datalist>
+
+<section class="add-entry">
+    <h2>Edit entry</h2>
+    <p class="entry-meta">
+        <span class="entry-shift">{{ entry.shift }}</span>
+        <span class="entry-time" data-created="{{ entry.created_at.isoformat() }}"></span>
+    </p>
+
+    {% if attachments %}
+        <label>Existing attachments</label>
+        <div class="entry-attachments">
+            {% for a in attachments %}
+                <div class="entry-attachment-item">
+                    {% if a.mime_type and a.mime_type.startswith('image/') %}
+                        <a href="{{ url_for('download_attachment', attachment_id=a.id) }}" target="_blank" class="attachment-image-link">
+                            <img src="{{ url_for('download_attachment', attachment_id=a.id) }}" alt="{{ a.original_filename }}" class="attachment-image">
+                        </a>
+                    {% elif a.mime_type and a.mime_type.startswith('video/') %}
+                        <video src="{{ url_for('download_attachment', attachment_id=a.id) }}" controls preload="metadata" class="attachment-video" title="{{ a.original_filename }}"></video>
+                    {% elif opens_inline(a.original_filename) %}
+                        <a href="{{ url_for('download_attachment', attachment_id=a.id) }}" target="_blank" class="attachment-file-link">
+                            📄 {{ a.original_filename }}
+                        </a>
+                    {% else %}
+                        <a href="{{ url_for('download_attachment', attachment_id=a.id) }}" download="{{ a.original_filename }}" class="attachment-file-link">
+                            📎 {{ a.original_filename }}
+                        </a>
+                    {% endif %}
+                    <form method="post" action="{{ url_for('delete_attachment_route', attachment_id=a.id) }}"
+                          onsubmit="return confirm('Remove &quot;{{ a.original_filename }}&quot;? It\'ll be hidden from the entry, but not permanently deleted.');"
+                          class="inline-form">
+                        <button type="submit" class="link-button attachment-remove-button" title="Remove this attachment">✕ Remove</button>
+                    </form>
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('edit_entry', entry_id=entry.id) }}" enctype="multipart/form-data" id="edit-entry-form">
+        <label>
+            Name(s) <a href="{{ url_for('manage_names') }}" class="add-name-link" title="Add or remove team members">+</a>
+        </label>
+        <div class="namepicker" id="edit-entry-namepicker">
+            <div class="namepicker-row">
+                <input type="text" class="namepicker-text" list="names-datalist" autocomplete="off"
+                       placeholder="Type or select a name, then Add">
+                <button type="button" class="namepicker-add">Add</button>
+            </div>
+            <div class="namepicker-chips"></div>
+            <input type="hidden" name="author" class="namepicker-hidden">
+        </div>
+        <label>
+            Tool / Entity
+            <input type="text" name="tool_entity" list="tools-datalist" autocomplete="off" required
+                   value="{{ entry.tool_entity }}">
+        </label>
+        <div class="field-row">
+            <label>
+                Task start <span class="optional-tag">(optional)</span>
+                <input type="datetime-local" name="task_start"
+                       value="{{ entry.task_start }}">
+            </label>
+            <label>
+                Task end <span class="optional-tag">(optional)</span>
+                <input type="datetime-local" name="task_end"
+                       value="{{ entry.task_end }}">
+            </label>
+        </div>
+        <label>
+            Problem Statement
+            <textarea name="problem_statement" rows="3" required>{{ entry.problem_statement }}</textarea>
+        </label>
+        <label>
+            Action Item(s) <span class="optional-tag">(optional)</span>
+            <textarea name="action_items" rows="3">{{ entry.action_items or '' }}</textarea>
+        </label>
+        <label>
+            Current Status <span class="optional-tag">(optional)</span>
+            <textarea name="current_status" rows="3">{{ entry.current_status or '' }}</textarea>
+        </label>
+        <label>
+            Follow up <span class="optional-tag">(optional)</span>
+            <textarea name="follow_up" rows="3">{{ entry.follow_up or '' }}</textarea>
+        </label>
+
+        <label>
+            Add attachment(s) <span class="optional-tag">(optional)</span>
+        </label>
+        <div class="attachment-picker" id="edit-entry-attachments">
+            <div class="attachment-dropzone" tabindex="0" role="button">
+                Drag files here, or click to browse
+            </div>
+            <input type="file" name="attachments" multiple accept="{{ upload_accept }}" class="attachment-input-hidden">
+            <ul class="attachment-filelist"></ul>
+        </div>
+
+        <button type="submit">Save changes</button>
+        <a href="{{ url_for('index') }}" class="cancel-link">Cancel</a>
+    </form>
+</section>
+
+{% if edit_history %}
+<section class="filters">
+    <h2>Previous versions ({{ edit_history|length }})</h2>
+    {% for h in edit_history %}
+        <article class="entry" data-edited-at="{{ h.edited_at.isoformat() }}">
+            <div class="entry-meta">
+                <span class="entry-time history-time"></span>
+            </div>
+            {% if h.changed_fields %}
+                <div class="entry-fields">
+                    {% for label, diff_html in h.changed_fields %}
+                        <p class="entry-field"><span class="field-label">{{ label }}</span> {{ diff_html }}</p>
+                    {% endfor %}
+                </div>
+            {% endif %}
+            {% if h.task_changed %}
+                <p class="entry-task"
+                   data-task-start="{{ h.previous_task_start.isoformat() if h.previous_task_start else '' }}"
+                   data-task-end="{{ h.previous_task_end.isoformat() if h.previous_task_end else '' }}"
+                   data-task-start-after="{{ h.task_start_after.isoformat() if h.task_start_after else '' }}"
+                   data-task-end-after="{{ h.task_end_after.isoformat() if h.task_end_after else '' }}">
+                    Task: <span class="task-range"></span>
+                </p>
+            {% endif %}
+            {% if not h.changed_fields and not h.task_changed %}
+                <p class="entry-field empty-diff">No visible change (may have only affected an attachment or an internal field).</p>
+            {% endif %}
+        </article>
+    {% endfor %}
+</section>
+{% endif %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    initAttachmentPicker('edit-entry-attachments');
+    initMentionsForForm('#edit-entry-form', {{ names|tojson }}, {{ tools|tojson }}, {{ hashtags|tojson }});
+    initNamePicker('edit-entry-namepicker', {{ entry.author|tojson }});
+
+    // When Task end is focused and still empty, default it to Task start's
+    // date/time so the person only has to adjust the time forward.
+    var taskStartInput = document.querySelector('input[name="task_start"]');
+    var taskEndInput = document.querySelector('input[name="task_end"]');
+    if (taskStartInput && taskEndInput) {
+        taskEndInput.addEventListener('focus', function () {
+            if (!taskEndInput.value && taskStartInput.value) {
+                taskEndInput.value = taskStartInput.value;
+            }
+        });
+    }
+
+    function pad(n) { return String(n).padStart(2, '0'); }
+    function timeStr(d) { return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+    function dateTimeStr(d) {
+        return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short' }) + ' ' + timeStr(d);
+    }
+    function formatDuration(ms) {
+        if (ms < 0) return null;
+        var totalMin = Math.round(ms / 60000);
+        var days = Math.floor(totalMin / 1440);
+        var hours = Math.floor((totalMin % 1440) / 60);
+        var mins = totalMin % 60;
+        var parts = [];
+        if (days) parts.push(days + 'd');
+        if (hours) parts.push(hours + 'h');
+        if (mins || !parts.length) parts.push(mins + 'm');
+        return parts.join(' ');
+    }
+
+    var span = document.querySelector('.entry-time[data-created]');
+    if (span) {
+        var d = new Date(span.dataset.created);
+        span.textContent = d.toLocaleDateString(undefined, {
+            weekday: 'long', day: '2-digit', month: 'long', year: 'numeric'
+        }) + ' ' + timeStr(d);
+    }
+
+    document.querySelectorAll('[data-edited-at]').forEach(function (article) {
+        var timeSpan = article.querySelector('.history-time');
+        if (timeSpan) {
+            timeSpan.textContent = 'Edited ' + dateTimeStr(new Date(article.dataset.editedAt));
+        }
+        var taskP = article.querySelector('.entry-task[data-task-start], .entry-task[data-task-end]');
+        if (taskP) {
+            function fmtRange(startIso, endIso) {
+                var startText = startIso ? dateTimeStr(new Date(startIso)) : '?';
+                var endText = endIso ? dateTimeStr(new Date(endIso)) : '?';
+                var text = startText + '\u2013' + endText;
+                if (startIso && endIso) {
+                    var duration = formatDuration(new Date(endIso) - new Date(startIso));
+                    if (duration) text += ' (' + duration + ')';
+                }
+                return text;
+            }
+            var oldRange = fmtRange(taskP.dataset.taskStart, taskP.dataset.taskEnd);
+            var newRange = fmtRange(taskP.dataset.taskStartAfter, taskP.dataset.taskEndAfter);
+            taskP.querySelector('.task-range').textContent = oldRange + ' \u2192 ' + newRange;
+        }
+    });
+});
+</script>
+
+{% endblock %}

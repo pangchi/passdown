@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+
+<section class="add-entry">
+    <h2>Add a category</h2>
+    <form method="post" action="{{ url_for('add_category_route') }}">
+        <label>
+            Category
+            <input type="text" name="name" placeholder="e.g. PM" required>
+        </label>
+        <button type="submit">Add</button>
+    </form>
+</section>
+
+<section class="filters">
+    <h2>Current categories</h2>
+    {% if categories %}
+        {% for c in categories %}
+            <article class="entry">
+                <div class="entry-meta">
+                    <span class="entry-category">{{ c.name }}</span>
+                </div>
+                <div class="entry-actions">
+                    <form method="post" action="{{ url_for('delete_category_route', category_id=c.id) }}"
+                          onsubmit="return confirm('Remove {{ c.name }}? Existing passdown entries will keep this category.');"
+                          class="inline-form">
+                        <button type="submit" class="link-button">Remove</button>
+                    </form>
+                </div>
+            </article>
+        {% endfor %}
+    {% else %}
+        <p class="empty">No categories yet — add one above.</p>
+    {% endif %}
+</section>
+
+<p><a href="{{ url_for('index') }}">&larr; Back to log</a></p>
+
+{% endblock %}
