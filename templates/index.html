@@ -127,6 +127,12 @@
             <a href="{{ url_for('export_html') }}" class="export-link" data-export-format="html" title="Download the currently filtered log as a standalone HTML file">⬇ HTML</a>
             <a href="{{ url_for('export_pdf') }}" class="export-link" data-export-format="pdf" title="Download the currently filtered log as a PDF">⬇ PDF</a>
         </span>
+        <span class="log-size-control" title="Adjust log text size">
+            <span aria-hidden="true">A</span>
+            <input type="range" id="log-size-slider" min="70" max="160" step="5" value="100" aria-label="Log size">
+            <span aria-hidden="true" class="log-size-big">A</span>
+            <button type="button" id="log-size-reset" class="link-button" title="Reset size to 100%">100%</button>
+        </span>
     </h2>
     <form method="get" action="{{ url_for('index') }}" class="filter-form" id="log-filter-form">
         <div class="log-search">
@@ -136,16 +142,18 @@
             <button type="button" class="log-search-button log-search-reset" id="log-search-reset"
                     title="Clear search" aria-label="Clear search">✕</button>
         </div>
-        <div class="name-bubbles">
-            <span class="name-bubbles-label">Name</span>
-            {% for n in names %}
-                <label class="name-bubble">
-                    <input type="checkbox" name="author" value="{{ n }}"
-                           {% if n in author_filters %}checked{% endif %} onchange="this.form.requestSubmit()">
-                    <span>{{ n }}</span>
-                </label>
-            {% endfor %}
-        </div>
+        <details class="name-filter-details"{% if author_filters %} open{% endif %}>
+            <summary class="name-bubbles-label" title="Show or hide the Name filter">Name{% if author_filters %} ({{ author_filters|length }}){% endif %}</summary>
+            <div class="name-bubbles">
+                {% for n in names %}
+                    <label class="name-bubble">
+                        <input type="checkbox" name="author" value="{{ n }}"
+                               {% if n in author_filters %}checked{% endif %} onchange="this.form.requestSubmit()">
+                        <span>{{ n }}</span>
+                    </label>
+                {% endfor %}
+            </div>
+        </details>
         {% if hashtags %}
             <div class="name-bubbles">
                 <span class="name-bubbles-label">Tags</span>
@@ -158,6 +166,20 @@
                 {% endfor %}
             </div>
         {% endif %}
+        <div class="name-bubbles">
+            <span class="name-bubbles-label">Category</span>
+            <label class="name-bubble">
+                <input type="checkbox" id="category-all" {% if not category_filters %}checked{% endif %}>
+                <span>All</span>
+            </label>
+            {% for c in categories %}
+                <label class="name-bubble">
+                    <input type="checkbox" name="category" value="{{ c }}"
+                           {% if c in category_filters %}checked{% endif %}>
+                    <span>{{ c }}</span>
+                </label>
+            {% endfor %}
+        </div>
         <div class="filter-row">
             <label>
                 Shift
@@ -173,24 +195,16 @@
                 <input type="text" name="tool_entity" list="tools-datalist" autocomplete="off"
                        value="{{ tool_filter }}" placeholder="All" onchange="this.form.requestSubmit()">
             </label>
-            <label>
-                Category
-                <select name="category" onchange="this.form.requestSubmit()">
-                    <option value="" {% if not category_filter %}selected{% endif %}>All</option>
-                    {% for c in categories %}
-                        <option value="{{ c }}" {% if category_filter == c %}selected{% endif %}>{{ c }}</option>
-                    {% endfor %}
-                </select>
-            </label>
-            {% if locations %}
+            {% if locations or location_filter %}
                 <label>
-                    Location
-                    <select name="location" onchange="this.form.requestSubmit()">
-                        <option value="" {% if not location_filter %}selected{% endif %}>All</option>
-                        {% for l in locations %}
-                            <option value="{{ l }}" {% if location_filter == l %}selected{% endif %}>{{ l }}</option>
-                        {% endfor %}
-                    </select>
+                    Location <span class="optional-tag">(add * for wildcard)</span>
+                    <input type="text" name="location" list="locations-datalist" autocomplete="off"
+                           value="{{ location_filter }}" placeholder="All, or e.g. F2*" size="12"
+                           title="Use * or ? as wildcards, e.g. F2* matches F2C2, F2C3"
+                           onchange="this.form.requestSubmit()">
+                    <datalist id="locations-datalist">
+                        {% for l in locations %}<option value="{{ l }}">{% endfor %}
+                    </datalist>
                 </label>
             {% endif %}
             <label>
@@ -261,7 +275,7 @@
                         <span class="entry-chamber">{{ e.chamber }} </span>
                     {% endif %}
                     {% if e.category and e.category != 'unspecified' %}
-                        <button type="button" class="entry-category-bubble{% if category_filter == e.category %} entry-category-bubble-active{% endif %}"
+                        <button type="button" class="entry-category-bubble{% if e.category in category_filters %} entry-category-bubble-active{% endif %}"
                                 data-filter-field="category" data-filter-value="{{ e.category }}" title="Filter by {{ e.category }}">{{ e.category }} </button>
                     {% endif %}
                     <span class="entry-time"></span>
@@ -782,7 +796,7 @@ document.addEventListener('DOMContentLoaded', function () {
         var filterForm = document.getElementById('log-filter-form');
         if (!filterForm) return;
 
-        if (field === 'author' || field === 'tag') {
+        if (field === 'author' || field === 'tag' || field === 'category') {
             var checkboxes = filterForm.querySelectorAll('input[name="' + field + '"]');
             var target = null;
             checkboxes.forEach(function (cb) {
@@ -797,6 +811,53 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         filterForm.requestSubmit();
     });
+
+    // Log size slider: scales the log entries only (zoom), remembered per browser.
+    (function () {
+        var slider = document.getElementById('log-size-slider');
+        var logBox = document.getElementById('log-container');
+        var resetBtn = document.getElementById('log-size-reset');
+        if (!slider || !logBox) return;
+        function apply(v) {
+            logBox.style.zoom = (v / 100);
+            resetBtn.textContent = v + '%';
+            slider.value = v;
+        }
+        var saved = 100;
+        try { saved = parseInt(localStorage.getItem('logSize'), 10) || 100; } catch (e) {}
+        saved = Math.min(160, Math.max(70, saved));
+        apply(saved);
+        slider.addEventListener('input', function () {
+            var v = parseInt(slider.value, 10);
+            apply(v);
+            try { localStorage.setItem('logSize', String(v)); } catch (e) {}
+        });
+        resetBtn.addEventListener('click', function () {
+            apply(100);
+            try { localStorage.setItem('logSize', '100'); } catch (e) {}
+        });
+    })();
+
+    // Category checkboxes: "All" = none selected. Ticking a category clears
+    // "All"; ticking "All" (or unticking the last category) clears the rest.
+    (function () {
+        var form = document.getElementById('log-filter-form');
+        if (!form) return;
+        var allBox = document.getElementById('category-all');
+        var cats = form.querySelectorAll('input[name="category"]');
+        if (!allBox) return;
+        allBox.addEventListener('change', function () {
+            cats.forEach(function (cb) { cb.checked = false; });
+            allBox.checked = true;
+            form.requestSubmit();
+        });
+        cats.forEach(function (cb) {
+            cb.addEventListener('change', function () {
+                allBox.checked = !Array.prototype.some.call(cats, function (c) { return c.checked; });
+                form.requestSubmit();
+            });
+        });
+    })();
 
     var lastDateLabel = null;
     container.querySelectorAll('.entry').forEach(function (entry) {

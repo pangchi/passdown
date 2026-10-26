@@ -6,6 +6,7 @@ entry (Problem Statement / Action Item(s) / Current Status / Follow up).
 Entries are stored in Postgres. See README.md for setup.
 """
 import csv
+import fnmatch
 import difflib
 import io
 import logging
@@ -355,7 +356,7 @@ def _degraded_index_context(new_entry_overrides, db_warning, db_entry_disabled):
         "shift_filter": "",
         "author_filters": [],
         "tool_filter": "",
-        "category_filter": "",
+        "category_filters": [],
         "tag_filters": [],
         "location_filter": "",
         "locations": [],
@@ -392,7 +393,7 @@ def _build_index_context(new_entry_overrides=None):
     shift_filter = request.args.get("shift", "")
     author_filters = request.args.getlist("author")
     tool_filter = request.args.get("tool_entity", "")
-    category_filter = request.args.get("category", "")
+    category_filters = [c for c in request.args.getlist("category") if c]
     tag_filters = request.args.getlist("tag")
     location_filter = request.args.get("location", "")
     search_query = request.args.get("q", "").strip()
@@ -462,9 +463,10 @@ def _build_index_context(new_entry_overrides=None):
             "OR current_status ~* %s OR follow_up ~* %s)"
         )
         params.extend([tool_filter, mention_pattern, mention_pattern, mention_pattern, mention_pattern])
-    if category_filter:
-        query += " AND category = %s"
-        params.append(category_filter)
+    if category_filters:
+        # Multiple categories are OR-ed (entry matches any selected one).
+        query += " AND category = ANY(%s)"
+        params.append(category_filters)
     if tag_filters:
         # An entry matches if ANY selected tag appears as a complete #tag
         # token in any of the 4 text fields (word-boundary regex, not a
@@ -546,7 +548,10 @@ def _build_index_context(new_entry_overrides=None):
         # and get_tool_locations() already degrades gracefully (empty
         # dict) if that's down — a SQL-side join wouldn't degrade as
         # nicely, it'd just fail the whole page's query.
-        entries = [e for e in entries if e["location"] == location_filter]
+        # Case-insensitive; "*" and "?" are wildcards (e.g. "F2*" matches
+        # F2C2, F2C3). Without a wildcard it stays an exact match.
+        _pat = location_filter.strip().lower()
+        entries = [e for e in entries if fnmatch.fnmatchcase((e["location"] or "").lower(), _pat)]
 
     # Day-grouping and all displayed times are done client-side (see the
     # script in index.html) so they reflect the viewer's own browser
@@ -571,7 +576,7 @@ def _build_index_context(new_entry_overrides=None):
         "shift_filter": shift_filter,
         "author_filters": author_filters,
         "tool_filter": tool_filter,
-        "category_filter": category_filter,
+        "category_filters": category_filters,
         "tag_filters": tag_filters,
         "location_filter": location_filter,
         "search_query": search_query,

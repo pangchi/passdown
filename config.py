@@ -46,7 +46,7 @@ CATEGORIES = [
 ]
 
 # How many days of history to show on the main page by default.
-DEFAULT_DAYS_BACK = 14
+DEFAULT_DAYS_BACK = 30
 
 # --- Attachments ---------------------------------------------------------
 # Folder files are saved to, relative to app.py (created automatically).
@@ -164,7 +164,7 @@ LOG_RETENTION_DAYS = 90
 # README.md's Version section. Bump this when you make a meaningful
 # change, so "what version is actually running" and "what does the
 # README say the latest version is" can be compared at a glance.
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.4.0"
 
 # Non-image extensions that open in a new tab instead of forcing a download.
 # Honest caveat: browsers only have a genuine built-in viewer for PDF —

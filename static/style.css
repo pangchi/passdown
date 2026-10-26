@@ -818,3 +818,18 @@ fieldset:disabled { opacity: 0.6; }
 }
 
 .empty { color: var(--muted); text-align: center; padding: 2rem 0; }
+
+.log-size-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-left: 0.75rem;
+    vertical-align: middle;
+    font-size: 0.8rem;
+    font-weight: 400;
+}
+.log-size-control input[type="range"] { width: 7rem; }
+.log-size-big { font-size: 1.1rem; }
+
+.name-filter-details { margin: 0.25rem 0; }
+.name-filter-details > summary { cursor: pointer; user-select: none; }
