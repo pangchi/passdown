@@ -3,6 +3,12 @@
 Versions match `APP_VERSION` in `config.py` (shown in the page footer).
 Newest first.
 
+## 1.5.0 — 2026-11-04
+- **Search term is highlighted in the log results** (yellow) wherever it
+  matches — the four text fields, Tool/Entity, and Name bubbles.
+  Case-insensitive, same substring match as the search itself. Exports
+  are unchanged.
+
 ## 1.4.0 — 2026-10-19
 - Log pane has a **size slider** (70%–160%) next to the download links to
   scale the log entries; click the percentage to reset. Remembered per browser.

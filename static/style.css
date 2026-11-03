@@ -304,6 +304,16 @@ fieldset:disabled { opacity: 0.6; }
 .log-search-button:hover { background: var(--bg); }
 .log-search-reset { color: var(--muted); }
 
+/* Search term highlighted in log results (added client-side in index.html).
+   Dark text on yellow so it stays readable on both plain and coloured
+   (active) bubble backgrounds. */
+mark.search-hit {
+    background: #fde047;
+    color: #1f2937;
+    padding: 0 1px;
+    border-radius: 2px;
+}
+
 .name-bubbles {
     display: flex;
     flex-wrap: wrap;
