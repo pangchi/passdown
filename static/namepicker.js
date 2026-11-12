@@ -53,7 +53,8 @@ function initNamePicker(containerId, initialNamesCsv) {
             chip.className = 'namepicker-chip';
 
             var label = document.createElement('span');
-            label.textContent = name;
+            label.textContent = (idx === 0 ? '\u270d ' : '') + name;
+            if (idx === 0) chip.title = 'Writer (first name entered)';
 
             var remove = document.createElement('button');
             remove.type = 'button';

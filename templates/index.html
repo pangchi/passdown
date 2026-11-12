@@ -32,7 +32,7 @@
           {% if db_entry_disabled %}aria-disabled="true"{% endif %}>
         <fieldset id="add-entry-fieldset" {% if db_entry_disabled %}disabled{% endif %} style="border:0; padding:0; margin:0;">
         <label>
-            Name(s) <a href="{{ url_for('manage_names') }}" class="add-name-link" title="Add or remove team members">+</a>
+            Name(s) <a href="{{ url_for('manage_names') }}" class="add-name-link" title="Add or remove team members">+</a> <span class="optional-tag">(first name = writer)</span>
         </label>
         <div class="namepicker" id="add-entry-namepicker">
             <div class="namepicker-row">
@@ -257,8 +257,9 @@
                     {% for n in e.author.split(',') %}
                         {% set n = n.strip() %}
                         {% if n %}
-                            <button type="button" class="entry-author-bubble{% if n in author_filters %} entry-author-bubble-active{% endif %}"
-                                    data-filter-field="author" data-filter-value="{{ n }}" title="Filter by {{ n }}">{{ n }} </button>
+                            {% set is_writer = (n == writer_of(e.author)) and loop.first %}
+                            <button type="button" class="entry-author-bubble{% if is_writer %} entry-writer-bubble{% endif %}{% if n in author_filters %} entry-author-bubble-active{% endif %}"
+                                    data-filter-field="author" data-filter-value="{{ n }}" title="{% if is_writer %}Writer — {% endif %}Filter by {{ n }}">{% if is_writer %}✍ {% endif %}{{ n }} </button>
                         {% endif %}
                     {% endfor %}
                     <button type="button" class="entry-shift-bubble{% if shift_filter == e.shift %} entry-shift-bubble-active{% endif %}"
@@ -616,52 +617,6 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // Highlight the active search term in the log results. Uses the term
-    // the server actually searched for (not whatever is currently typed in
-    // the box), matches case-insensitively as a plain substring like the
-    // server's ILIKE, and wraps matches in <mark> by splitting text nodes —
-    // never touching innerHTML, so note text stays escaped. Covers the
-    // fields the search looks in: the four note fields, the Tool/Entity
-    // heading/bubble and the Name bubbles. Field labels are skipped.
-    (function highlightSearch(term) {
-        if (!term) return;
-        var needle = term.toLowerCase();
-        var targets = document.querySelectorAll(
-            '#log-container .entry-fields, ' +
-            '#log-container .entry-author-bubble, ' +
-            '#log-container .entry-tool-bubble'
-        );
-        targets.forEach(function (root) {
-            var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-                acceptNode: function (node) {
-                    if (node.parentElement && node.parentElement.closest('.field-label, mark')) {
-                        return NodeFilter.FILTER_REJECT;
-                    }
-                    return node.nodeValue.toLowerCase().indexOf(needle) === -1
-                        ? NodeFilter.FILTER_SKIP : NodeFilter.FILTER_ACCEPT;
-                }
-            });
-            var nodes = [];
-            while (walker.nextNode()) nodes.push(walker.currentNode);
-            nodes.forEach(function (node) {
-                var text = node.nodeValue;
-                var lower = text.toLowerCase();
-                var frag = document.createDocumentFragment();
-                var pos = 0, idx;
-                while ((idx = lower.indexOf(needle, pos)) !== -1) {
-                    if (idx > pos) frag.appendChild(document.createTextNode(text.slice(pos, idx)));
-                    var mark = document.createElement('mark');
-                    mark.className = 'search-hit';
-                    mark.textContent = text.slice(idx, idx + needle.length);
-                    frag.appendChild(mark);
-                    pos = idx + needle.length;
-                }
-                if (pos < text.length) frag.appendChild(document.createTextNode(text.slice(pos)));
-                node.parentNode.replaceChild(frag, node);
-            });
-        });
-    })({{ search_query|tojson }});
-
     initAttachmentPicker('add-entry-attachments');
     initMentionsForForm('#add-entry-form', {{ names|tojson }}, {{ tools|tojson }}, {{ hashtags|tojson }});
     initNamePicker(
@@ -736,9 +691,23 @@ document.addEventListener('DOMContentLoaded', function () {
     // filter), but the submit listener above preserves the rest of the form.
     var addEntryToolInput = document.getElementById('add-entry-tool');
     if (addEntryToolInput) {
+        // Remembers what the field held last, so clearing it can also clear
+        // the log filter it populated (but only if the filter still shows
+        // that same tool — a filter the person set some other way is left alone).
+        var prevAddEntryTool = addEntryToolInput.value.trim();
         addEntryToolInput.addEventListener('change', function () {
             var value = addEntryToolInput.value.trim();
-            if (!value) return;
+            var previous = prevAddEntryTool;
+            prevAddEntryTool = value;
+            if (!value) {
+                var form = document.getElementById('log-filter-form');
+                var filterInput = form && form.querySelector('[name="tool_entity"]');
+                if (filterInput && previous && filterInput.value === previous) {
+                    filterInput.value = '';
+                    form.requestSubmit();
+                }
+                return;
+            }
             var datalist = document.getElementById('tools-datalist');
             var matched = datalist && Array.prototype.some.call(
                 datalist.querySelectorAll('option'),

@@ -78,15 +78,6 @@ UPLOAD_ACCEPT = ",".join("." + ext for ext in sorted(config.ALLOWED_EXTENSIONS))
 # attachment auto-purge warnings, for instance — land in the same file
 # without needing their own handler.
 LOG_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), config.LOG_FOLDER))
-os.makedirs(LOG_DIR, exist_ok=True)
-
-_log_handler = TimedRotatingFileHandler(
-    os.path.join(LOG_DIR, "passdown.log"),
-    when="midnight",
-    backupCount=config.LOG_RETENTION_DAYS,
-    encoding="utf-8",
-)
-_log_handler.suffix = "%Y-%m-%d"  # ISO 8601 date — explicit rather than relying on the (matching) default
 
 
 def _iso_date_log_namer(default_name):
@@ -105,12 +96,36 @@ def _iso_date_log_namer(default_name):
     return os.path.join(dir_name, f"{stem}-{date_str}.{ext}")
 
 
-_log_handler.namer = _iso_date_log_namer
-_log_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+_log_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+_log_file_error = None
+try:
+    os.makedirs(LOG_DIR, exist_ok=True)
+    _log_handler = TimedRotatingFileHandler(
+        os.path.join(LOG_DIR, "passdown.log"),
+        when="midnight",
+        backupCount=config.LOG_RETENTION_DAYS,
+        encoding="utf-8",
+    )
+    _log_handler.suffix = "%Y-%m-%d"  # ISO 8601 date — explicit rather than relying on the (matching) default
+    _log_handler.namer = _iso_date_log_namer
+except OSError as _exc:
+    # Typically a permissions problem (the service user can't create or
+    # write LOG_DIR). Don't let that stop the whole app from starting:
+    # fall back to stderr (which systemd captures in the journal) and say
+    # so loudly, so it can be fixed without an outage.
+    _log_file_error = _exc
+    _log_handler = logging.StreamHandler()
+_log_handler.setFormatter(_log_formatter)
 logging.getLogger().addHandler(_log_handler)
 logging.getLogger().setLevel(logging.INFO)
 
 logger = logging.getLogger(__name__)
+if _log_file_error is not None:
+    logger.error(
+        "Cannot write log files to %s (%s) — logging to stderr/journal instead. "
+        "Fix the folder's ownership/permissions for the service user.",
+        LOG_DIR, _log_file_error,
+    )
 
 # Separate logger (still lands in the same passdown.log file, via the
 # same root-logger handler set up above) specifically for usage/traffic
@@ -201,6 +216,28 @@ def _opens_inline(filename):
 
 
 app.jinja_env.globals["opens_inline"] = _opens_inline
+
+
+def _split_authors(author):
+    return [n.strip() for n in (author or "").split(",") if n.strip()]
+
+
+def _writer_of(author):
+    """The first name entered in the Name(s) picker is the entry's writer."""
+    names = _split_authors(author)
+    return names[0] if names else ""
+
+
+def _author_label(author):
+    """'Alan' or 'Alan (with Bob, Carol)' — writer first, then co-names."""
+    names = _split_authors(author)
+    if len(names) > 1:
+        return f"{names[0]} (with {', '.join(names[1:])})"
+    return names[0] if names else ""
+
+
+app.jinja_env.globals["writer_of"] = _writer_of
+app.jinja_env.globals["author_label"] = _author_label
 
 
 # Endpoints deliberately excluded from usage logging: static assets (not
@@ -543,7 +580,7 @@ def _build_index_context(new_entry_overrides=None):
         )
 
     if location_filter:
-        # Applied in Python rather than as a SQL join against mestoollist:
+        # Applied in Python rather than in SQL: locations come from a separate MES database:
         # that view depends on a live FDW connection to the MES database,
         # and get_tool_locations() already degrades gracefully (empty
         # dict) if that's down — a SQL-side join wouldn't degrade as
@@ -652,7 +689,7 @@ def export_csv():
     writer = csv.writer(output)
     writer.writerow(
         [
-            "Logged At", "Task Start", "Task End", "Name(s)", "Shift", "Tool/Entity",
+            "Logged At", "Task Start", "Task End", "Writer", "Name(s)", "Shift", "Tool/Entity",
             "Chamber", "Category", "Location", "Problem Statement", "Action Item(s)",
             "Current Status", "Follow up", "Tags", "Mentions",
         ]
@@ -664,6 +701,7 @@ def export_csv():
                 _fmt_export_dt(e["created_at"]),
                 _fmt_export_dt(e["task_start"]),
                 _fmt_export_dt(e["task_end"]),
+                _writer_of(e["author"]),
                 e["author"],
                 e["shift"],
                 e["tool_entity"],
@@ -719,7 +757,7 @@ def export_docx():
 
     for e in entries:
         doc.add_heading(
-            f"{_fmt_export_dt(e['created_at'])} \u2014 {e['author']} ({e['shift']})", level=2
+            f"{_fmt_export_dt(e['created_at'])} \u2014 {_author_label(e['author'])} ({e['shift']})", level=2
         )
 
         meta_bits = [f"Tool/Entity: {e['tool_entity']}"] if e["tool_entity"] else []
@@ -856,7 +894,7 @@ def export_pdf():
 
     for e in entries:
         pdf.set_font("Helvetica", "B", 12)
-        heading = f"{_fmt_export_dt(e['created_at'])} - {e['author']} ({e['shift']})"
+        heading = f"{_fmt_export_dt(e['created_at'])} - {_author_label(e['author'])} ({e['shift']})"
         pdf.multi_cell(0, 7, _pdf_safe(heading), new_x="LMARGIN", new_y="NEXT")
 
         meta_bits = [f"Tool/Entity: {e['tool_entity']}"] if e["tool_entity"] else []

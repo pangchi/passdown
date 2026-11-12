@@ -131,7 +131,6 @@ ALTER TABLE passdown_attachments ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ
 
 CREATE INDEX IF NOT EXISTS idx_passdown_attachments_entry_id ON passdown_attachments (entry_id);
 
--- The Tool / Entity dropdown on the add-entry form is populated live from
--- a "mestoollist" view (see config.py: MESTOOLLIST_VIEW / MESTOOLLIST_COLUMN)
--- rather than a column in this table. That view is expected to already
--- exist in your database — this file doesn't create it.
+-- The Tool / Entity dropdown and tool locations are read directly from the
+-- MES database's eqlist table (see README, "MES database") — nothing for this
+-- file to create.

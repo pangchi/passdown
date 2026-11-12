@@ -29,11 +29,22 @@ SHIFTS = [
 DAY_SHIFT_START_HOUR = 8   # 08:00
 DAY_SHIFT_END_HOUR = 21    # 21:00
 
-# Tool/entity dropdown — sourced live from a database view (e.g. from
-# your MES) rather than a static list here. Update these two to match
-# the actual view/column names in your database.
-MESTOOLLIST_VIEW = "mestoollist"
-MESTOOLLIST_COLUMN = "mestoolname"
+# Tool/entity dropdown and tool locations — read live from the MES
+# database's tool view/table (connection/schema/table in db_config.py /
+# .env as MES_DB_*), using these column names:
+# (the defaults match the MES database's public.mestoollist view; override
+# with MES_DB_TOOL_COLUMN / MES_DB_LOCATION_COLUMN in .env if yours differ)
+MES_TOOL_COLUMN = os.environ.get("MES_DB_TOOL_COLUMN", "mestoolname")
+MES_LOCATION_COLUMN = os.environ.get("MES_DB_LOCATION_COLUMN", "Location")
+
+# The MES read is cached and done in the background so an unreachable or
+# slow MES server never stalls a page load by more than
+# MES_FETCH_WAIT_SECONDS.
+MES_CONNECT_TIMEOUT_SECONDS = 3  # give up connecting to MES after this long
+MES_CACHE_SECONDS = 300        # re-read the view at most this often
+MES_RETRY_SECONDS = 60         # after a failed/slow read, wait this long before retrying
+MES_FETCH_WAIT_SECONDS = 3     # max time a page load waits for a fresh read
+MES_QUERY_TIMEOUT_SECONDS = 10 # statement_timeout for the MES read
 
 # Seed values for the "Category" dropdown — only used to populate the
 # categories table the very first time it's empty. After that, manage
@@ -156,15 +167,24 @@ LOG_FOLDER = "../passdown_logs"
 # Log files rotate at midnight and the last this-many days are kept —
 # anything older is deleted automatically by the rotation itself
 # (Python's TimedRotatingFileHandler backupCount), no separate cleanup
-# job needed.
-LOG_RETENTION_DAYS = 90
+# job needed. Default 90; override with PASSDOWN_LOG_RETENTION_DAYS in .env
+# (a missing, non-numeric or < 1 value falls back to 90).
+def _env_positive_int(name, default):
+    try:
+        value = int(os.environ.get(name, default))
+        return value if value >= 1 else default
+    except (TypeError, ValueError):
+        return default
+
+
+LOG_RETENTION_DAYS = _env_positive_int("PASSDOWN_LOG_RETENTION_DAYS", 90)
 
 # --- Version -----------------------------------------------------------------
 # Shown in the page footer (next to the build date) and referenced in
 # README.md's Version section. Bump this when you make a meaningful
 # change, so "what version is actually running" and "what does the
 # README say the latest version is" can be compared at a glance.
-APP_VERSION = "1.5.0"
+APP_VERSION = "1.6.3"
 
 # Non-image extensions that open in a new tab instead of forcing a download.
 # Honest caveat: browsers only have a genuine built-in viewer for PDF —

@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import shutil
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
@@ -634,53 +635,108 @@ def purge_oldest_attachments_over_disk_threshold(upload_dir):
     return purged
 
 
-def get_tool_list():
-    """Return the list of tool/entity names from the mestoollist view.
+# --- MES tool list / locations (cached, never blocks a page for long) ----
+#
+# The tool list lives in a separate MES database. Even with a short
+# connect_timeout, reading it on every request would be wasteful, and an
+# unreachable server used to hang pages for minutes (killing the gunicorn
+# worker; Apache then showed "Proxy Error"). So the table is read at most once per MES_CACHE_SECONDS, in a background
+# thread, and a request waits at most MES_FETCH_WAIT_SECONDS for it. If MES
+# is slow or down, the last good data (or empty) is returned immediately and
+# the next attempt is delayed by MES_RETRY_SECONDS.
+_mes_lock = threading.Lock()
+_mes_state = {
+    "rows": None,          # last good [(tool, location), ...]; None = never fetched
+    "fetched_at": 0.0,
+    "next_try": 0.0,
+    "thread": None,
+    "done": None,          # threading.Event of the in-flight fetch
+}
 
-    Reads the view name and column name from config.py so this can be
-    pointed at whatever your MES already exposes. Returns an empty list
-    (rather than raising) if the view/column isn't there yet, so the app
-    still starts even before that view exists — the dropdown just shows
-    no options until it does.
-    """
+
+def _fetch_mes_rows():
+    """Read (tool, location) rows straight from the MES database's eqlist
+    table over a short-lived, separate connection (not the app's pool)."""
+    import config
+    from psycopg2 import sql
+
+    conn = psycopg2.connect(
+        host=db_config.MES_DB_HOST,
+        port=db_config.MES_DB_PORT,
+        dbname=db_config.MES_DB_NAME,
+        user=db_config.MES_DB_USER,
+        password=db_config.MES_DB_PASSWORD,
+        connect_timeout=config.MES_CONNECT_TIMEOUT_SECONDS,
+        options=f"-c statement_timeout={int(config.MES_QUERY_TIMEOUT_SECONDS * 1000)}",
+    )
+    try:
+        conn.set_session(readonly=True, autocommit=True)
+        query = sql.SQL("SELECT {tool}, {loc} FROM {schema}.{table} ORDER BY {tool}").format(
+            tool=sql.Identifier(config.MES_TOOL_COLUMN),
+            loc=sql.Identifier(config.MES_LOCATION_COLUMN),
+            schema=sql.Identifier(db_config.MES_DB_SCHEMA),
+            table=sql.Identifier(db_config.MES_DB_TABLE),
+        )
+        with conn.cursor() as cur:
+            cur.execute(query)
+            return [(r[0], r[1]) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def _mes_worker(done):
     import config
 
-    query = f"SELECT DISTINCT {config.MESTOOLLIST_COLUMN} FROM {config.MESTOOLLIST_VIEW} ORDER BY {config.MESTOOLLIST_COLUMN}"
+    log = logging.getLogger(__name__)
     try:
-        with get_cursor() as cur:
-            cur.execute(query)
-            rows = cur.fetchall()
-        return [row[config.MESTOOLLIST_COLUMN] for row in rows if row[config.MESTOOLLIST_COLUMN]]
+        rows = _fetch_mes_rows()
+        with _mes_lock:
+            _mes_state["rows"] = rows
+            _mes_state["fetched_at"] = time.time()
+            _mes_state["next_try"] = time.time() + config.MES_CACHE_SECONDS
     except Exception as exc:
-        app_logger = logging.getLogger(__name__)
-        app_logger.warning("Could not read tool list from %s: %s", config.MESTOOLLIST_VIEW, exc)
-        return []
+        log.warning("Could not read tool list from MES (%s:%s/%s.%s): %s", db_config.MES_DB_HOST, db_config.MES_DB_PORT, db_config.MES_DB_SCHEMA, db_config.MES_DB_TABLE, exc)
+        with _mes_lock:
+            _mes_state["next_try"] = time.time() + config.MES_RETRY_SECONDS
+    finally:
+        with _mes_lock:
+            _mes_state["thread"] = None
+        done.set()
+
+
+def _mes_snapshot():
+    """Return [(tool, location), ...] — cached, possibly stale, possibly []."""
+    import config
+
+    now = time.time()
+    with _mes_lock:
+        rows = _mes_state["rows"]
+        if now < _mes_state["next_try"]:
+            return rows or []
+        done = _mes_state["done"]
+        if _mes_state["thread"] is None:
+            done = threading.Event()
+            t = threading.Thread(target=_mes_worker, args=(done,), daemon=True)
+            _mes_state["thread"] = t
+            _mes_state["done"] = done
+            t.start()
+    done.wait(config.MES_FETCH_WAIT_SECONDS)
+    with _mes_lock:
+        return _mes_state["rows"] or []
+
+
+def get_tool_list():
+    """Return the sorted, de-duplicated tool/entity names from the MES eqlist table.
+
+    Cached and time-bounded (see above); returns an empty list rather than
+    raising or hanging if MES isn't reachable.
+    """
+    return sorted({t for t, _ in _mes_snapshot() if t})
 
 
 def get_tool_locations():
-    """Return {tool_name: location} from the mestoollist view's Location
-    column, for showing/filtering entries by a tool's physical location.
-
-    Same graceful-degradation approach as get_tool_list(): returns an
-    empty dict rather than raising if the view isn't reachable, so a
-    down MES connection doesn't take the whole log page with it — entries
-    just show no location bubble until it's reachable again. "Location"
-    is quoted in the query because that's the exact (capitalized) column
-    name in the view as defined — see fdw/setup_mestoollist_fdw.sql.template.
+    """Return {tool_name: location} from the view's Location column, for
+    showing/filtering entries by a tool's physical location. Same caching
+    and graceful degradation as get_tool_list().
     """
-    import config
-
-    query = f'SELECT {config.MESTOOLLIST_COLUMN}, "Location" FROM {config.MESTOOLLIST_VIEW}'
-    try:
-        with get_cursor() as cur:
-            cur.execute(query)
-            rows = cur.fetchall()
-        return {
-            row[config.MESTOOLLIST_COLUMN]: row["Location"]
-            for row in rows
-            if row[config.MESTOOLLIST_COLUMN] and row["Location"]
-        }
-    except Exception as exc:
-        app_logger = logging.getLogger(__name__)
-        app_logger.warning("Could not read tool locations from %s: %s", config.MESTOOLLIST_VIEW, exc)
-        return {}
+    return {t: loc for t, loc in _mes_snapshot() if t and loc}

@@ -3,15 +3,55 @@
 Versions match `APP_VERSION` in `config.py` (shown in the page footer).
 Newest first.
 
-## 1.5.0 — 2026-11-04
-- **Search term is highlighted in the log results** (yellow) wherever it
-  matches — the four text fields, Tool/Entity, and Name bubbles.
-  Case-insensitive, same substring match as the search itself. Exports
-  are unchanged.
+## 1.6.3 — 2026-11-12
+- Log-file retention (daily files in `../passdown_logs`) is now configurable
+  with `PASSDOWN_LOG_RETENTION_DAYS` in `.env`; default stays 90 days.
 
-## 1.4.0 — 2026-10-19
-- Log pane has a **size slider** (70%–160%) next to the download links to
-  scale the log entries; click the percentage to reset. Remembered per browser.
+## 1.6.2 — 2026-11-12
+- Fix: picking a Tool/Entity in New Entry sets the log's Tool/Entity filter;
+  clearing the New Entry field now clears that filter too (only if the filter
+  still shows the same tool).
+
+## 1.6.1 — 2026-11-12
+- Fix: reading MES failed with `column "ToolName" does not exist`. The MES
+  database exposes `public.mestoollist` (column `mestoolname`), so the
+  defaults are now `MES_DB_SCHEMA=public`, `MES_DB_TABLE=mestoollist`,
+  tool column `mestoolname`; the column names can be overridden with
+  `MES_DB_TOOL_COLUMN` / `MES_DB_LOCATION_COLUMN`.
+
+## 1.6.0 — 2026-11-12
+- **MES data is now read directly from the MES database — no more
+  `postgres_fdw`.** The app connects (read-only, 3 s connect timeout) to
+  `<schema>.<table>` (default `mes.eqlist`) using new `MES_DB_*` settings in
+  `.env`, and reads `"ToolName"` / `"Location"`. The `fdw/` folder,
+  `scripts/setup_fdw.sh` and `MES_FDW_*` variables are removed; see the
+  README for optional cleanup of the old view/server.
+- Config: `MESTOOLLIST_VIEW` / `MESTOOLLIST_COLUMN` replaced by
+  `MES_TOOL_COLUMN` / `MES_LOCATION_COLUMN`.
+
+## 1.5.2 — 2026-11-12
+- (Superseded by 1.6.0, which removes the FDW.) MES source changed: `public.mestoollist` is now a view over the
+  `mes.eqlist` foreign table (`mestoolname`, `"Location"`, `"RI"`,
+  `"Module"`, `"ModuleCode"`) instead of `Tool_Selection` +
+  `Location_Selection`. Re-run `scripts/setup_fdw.sh` to apply. The FDW
+  server is also created with `connect_timeout '3'`. The app code is
+  unchanged (it reads only `mestoolname` and `"Location"`).
+
+## 1.5.1 — 2026-11-12
+- Fix: app crashed on startup with `PermissionError` when the log folder
+  wasn't writable by the service user. It now falls back to stderr/journal
+  with an error message instead of exiting. README documents the folder setup.
+
+## 1.5.1b — 2026-11-12
+- **Fix: "Proxy Error" / gunicorn `WORKER TIMEOUT` when the MES server is
+  unreachable.** The mestoollist tool list and locations are now cached,
+  fetched in a background thread, and a page waits at most 3 s for them;
+  stale data is used while MES is down. New `MES_*` settings in `config.py`.
+
+## 1.5.0 — 2026-11-12
+- **First name entered is the writer.** Marked ✍ in the Name(s) picker and
+  the log; other names are co-names. CSV export gains a **Writer** column;
+  DOCX/HTML/PDF headings show "Writer (with others)".
 
 ## 1.4.0 — 2026-10-19
 - Log pane has a **text-size slider** (70–160%, click the percentage to

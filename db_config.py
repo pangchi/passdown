@@ -23,3 +23,14 @@ DB_PASSWORD = os.environ.get("PASSDOWN_DB_PASSWORD", "")
 # read/write goes through this zone regardless of the DB server's own
 # default timezone.
 APP_TIMEZONE = os.environ.get("PASSDOWN_TIMEZONE", "Asia/Singapore")
+
+# MES database (read-only, separate server/database). The tool list and
+# locations are read directly from its mestoollist view over a normal Postgres
+# connection — no foreign data wrapper. See README ("MES database").
+MES_DB_HOST = os.environ.get("MES_DB_HOST", "localhost")
+MES_DB_PORT = os.environ.get("MES_DB_PORT", "5432")
+MES_DB_NAME = os.environ.get("MES_DB_NAME", "mes_db")
+MES_DB_USER = os.environ.get("MES_DB_USER", "mes_reader")
+MES_DB_PASSWORD = os.environ.get("MES_DB_PASSWORD", "")
+MES_DB_SCHEMA = os.environ.get("MES_DB_SCHEMA", "public")
+MES_DB_TABLE = os.environ.get("MES_DB_TABLE", "mestoollist")

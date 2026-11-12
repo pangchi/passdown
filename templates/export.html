@@ -82,7 +82,7 @@
 
 {% for e in entries %}
     <div class="entry">
-        <div class="entry-title">{{ fmt(e.created_at) }} &mdash; {{ e.author }} ({{ e.shift }})</div>
+        <div class="entry-title">{{ fmt(e.created_at) }} &mdash; {{ author_label(e.author) }} ({{ e.shift }})</div>
         <div class="entry-meta">
             {% if e.tool_entity %}Tool/Entity: {{ e.tool_entity }}{% endif %}
             {% if e.location %} | Location: {{ e.location }}{% endif %}

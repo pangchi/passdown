@@ -52,7 +52,7 @@
 
     <form method="post" action="{{ url_for('edit_entry', entry_id=entry.id) }}" enctype="multipart/form-data" id="edit-entry-form">
         <label>
-            Name(s) <a href="{{ url_for('manage_names') }}" class="add-name-link" title="Add or remove team members">+</a>
+            Name(s) <a href="{{ url_for('manage_names') }}" class="add-name-link" title="Add or remove team members">+</a> <span class="optional-tag">(first name = writer)</span>
         </label>
         <div class="namepicker" id="edit-entry-namepicker">
             <div class="namepicker-row">
